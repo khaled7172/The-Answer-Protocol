@@ -1,0 +1,81 @@
+# world.yaml
+#
+# YOU must design and fill this file. Requirements from the PDF:
+#   - 8+ locations forming at least one loop + one branch (no dead-end-only maps)
+#   - 3+ distinct NPC roles (e.g., dialogue, quest-giver, enemy)
+#   - 4+ distinct items (at least 2 must be obtainable: true)
+#   - 2+ quests (fetch, defeat, deliver, etc.)
+#
+# Validate your YAML before every commit: https://www.yamllint.com
+# A single bad indentation WILL break Person 2's Go parser.
+#
+# See example_world.yaml for a tiny (non-compliant) structure reference.
+
+world:
+  locations:
+    # Replace / expand these with your actual world design.
+    # Each room needs: name, description, exits (map direction → room_id)
+    # Optional: items (list of item IDs), spawns (list of {npc_type, count})
+    #
+    # Example:
+    # start:
+    #   name: "Village Square"
+    #   description: "..."
+    #   exits:
+    #     north: "tavern"
+    #   spawns:
+    #     - npc_type: "guard"
+    #       count: 1
+
+  items:
+    # Define all item templates here.
+    # Each item needs: name, description, obtainable (bool)
+    # Optional: effect { type: "heal"/"weapon", amount/damage_bonus }
+    #
+    # Example:
+    # herbs:
+    #   name: "Healing Herbs"
+    #   description: "..."
+    #   obtainable: true
+    #   effect:
+    #     type: "heal"
+    #     amount: 15
+
+  npcs:
+    # Define all NPC templates here.
+    # Each NPC needs: name, description, role, dialogue (list), stats {hp, damage, hostile}
+    # Optional: quests (list of quest IDs this NPC gives)
+    #
+    # Example:
+    # guard:
+    #   name: "Village Guard"
+    #   description: "..."
+    #   role: "dialogue"
+    #   dialogue:
+    #     - "Stay safe, traveler."
+    #   stats:
+    #     hp: 20
+    #     damage: 4
+    #     hostile: false
+
+  quests:
+    # Define all quests here.
+    # Each quest needs: name, description, giver_npc, objective {type, item/npc, quantity},
+    #                   reward {gold, item, xp}, completion_dialogue
+    #
+    # Objective types: "fetch_item", "defeat_npc", "deliver_item"
+    #
+    # Example:
+    # fetch_herbs:
+    #   name: "The Innkeeper's Remedy"
+    #   description: "..."
+    #   giver_npc: "innkeeper"
+    #   objective:
+    #     type: "fetch_item"
+    #     item: "herbs"
+    #     quantity: 1
+    #   reward:
+    #     gold: 20
+    #     item: "ale"
+    #     xp: 50
+    #   completion_dialogue: "..."
