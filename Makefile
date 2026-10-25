@@ -16,4 +16,4 @@ lint:
 	go vet ./...
 
 clean:
-	rm -f tap-server tap-client tap-gui
+	rm -f tap-server tap-client tap-gui network
