@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"tap/server/logger"
 )
@@ -12,6 +13,8 @@ func main() {
 
 	hub := NewHub()
 	go hub.Run()
+
+	tracker := NewReconnectTracker(5, 10*time.Second)
 
 	ln, err := net.Listen("tcp", ":8080")
 	if err != nil {
@@ -27,7 +30,12 @@ func main() {
 			logger.Log.Warn("accept_error", "err", err)
 			continue
 		}
-		logger.Log.Info("connection_accepted", "ip", conn.RemoteAddr())
+		rawAddr := conn.RemoteAddr().String()
+		ip := extractIP(rawAddr)
+		if abused, count := tracker.Record(ip); abused {
+			logger.Log.Warn("abuse_rapid_reconnect", "ip", ip, "attempts", count)
+		}
+		logger.Log.Info("connection_accepted", "ip", rawAddr)
 
 		c := NewClient(conn)
 		fmt.Fprintf(conn, "OK hello proto=1\n")

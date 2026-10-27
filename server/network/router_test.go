@@ -311,3 +311,23 @@ func TestRouteGameHandlerHook(t *testing.T) {
 		t.Fatalf("expected c.roomID to update to room2, got %q", c.roomID)
 	}
 }
+
+func TestRouteFloodReturnsRateLimited(t *testing.T) {
+	h := NewHub()
+	c := newTestClient("alice")
+	h.Register(c)
+
+	for i := 0; i < maxCmdsPerSec; i++ {
+		Route(h, c, "LOOK")
+		resp := <-c.send
+		if resp != "OK" {
+			t.Fatalf("expected OK at iteration %d, got %q", i, resp)
+		}
+	}
+
+	Route(h, c, "LOOK")
+	resp := <-c.send
+	if resp != "ERR 429 RATE_LIMITED" {
+		t.Fatalf("expected ERR 429 RATE_LIMITED on flood, got %q", resp)
+	}
+}

@@ -21,7 +21,7 @@ type whoResponse struct {
 func Route(h *Hub, c *Client, line string) {
 	if !rateAllow(c) {
 		c.Enqueue("ERR 429 RATE_LIMITED")
-		logger.Log.Warn("abuse_cmd_flood", "player", c.name, "ip", c.conn.RemoteAddr())
+		logger.Log.Warn("abuse_cmd_flood", "player", c.name, "ip", clientRemoteAddr(c), "count_per_sec", c.cmdCount)
 		return
 	}
 
@@ -98,7 +98,7 @@ func handleConnect(h *Hub, c *Client, fields []string) {
 	c.name = name
 	h.Register(c)
 	c.Enqueue("OK connected")
-	logger.Log.Info("player_connected", "player", name, "ip", c.conn.RemoteAddr())
+	logger.Log.Info("player_connected", "player", name, "ip", clientRemoteAddr(c))
 }
 
 func handleChat(h *Hub, c *Client, fields []string) {
@@ -176,4 +176,11 @@ func rateAllow(c *Client) bool {
 	}
 	c.cmdCount++
 	return c.cmdCount <= maxCmdsPerSec
+}
+
+func clientRemoteAddr(c *Client) string {
+	if c.conn != nil && c.conn.RemoteAddr() != nil {
+		return c.conn.RemoteAddr().String()
+	}
+	return ""
 }
