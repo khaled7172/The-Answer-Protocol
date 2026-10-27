@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
+
+	"tap/server/logger"
 )
 
 type Client struct {
@@ -58,6 +61,10 @@ func (c *Client) Enqueue(msg string) (ok bool) {
 			ok = false
 		}
 	}()
+	logger.Log.Debug("response_sent", "player", c.name, "response", msg)
+	if strings.HasPrefix(msg, "ERR ") {
+		logger.Log.Warn("error_sent", "player", c.name, "code", msg)
+	}
 	select {
 	case c.send <- msg:
 		return true

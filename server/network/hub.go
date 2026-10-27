@@ -86,7 +86,13 @@ func (h *Hub) Broadcast(scope, roomID, target, payload string) {
 	h.broadcast <- broadcastMsg{scope, roomID, target, payload}
 }
 
+func (h *Hub) Send(scope, roomID, target, payload string) {
+	h.Broadcast(scope, roomID, target, payload)
+}
+
 func (h *Hub) dispatch(msg broadcastMsg) {
+	logger.Log.Info("event_broadcast", "scope", msg.scope, "payload", msg.payload)
+
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 

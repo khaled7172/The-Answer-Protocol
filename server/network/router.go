@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -8,6 +10,13 @@ import (
 )
 
 const maxCmdsPerSec = 20
+
+var GameHandler func(playerName, roomID string, fields []string) (string, string)
+
+type whoResponse struct {
+	Room   []string `json:"room"`
+	Server int      `json:"server"`
+}
 
 func Route(h *Hub, c *Client, line string) {
 	if !rateAllow(c) {
@@ -40,6 +49,39 @@ func Route(h *Hub, c *Client, line string) {
 		return
 	}
 
+	if cmd == "CHAT" {
+		handleChat(h, c, fields)
+		return
+	}
+
+	if cmd == "WHO" {
+		handleWho(h, c)
+		return
+	}
+
+	if cmd == "GROUP" {
+		handleGroup(h, c, fields)
+		return
+	}
+
+	if GameHandler != nil {
+		resp, newRoomID := GameHandler(c.name, c.roomID, fields)
+		if newRoomID != "" && newRoomID != c.roomID {
+			if c.roomID != "" {
+				h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
+			}
+			c.roomID = newRoomID
+			h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE ENTER %s", c.name))
+		}
+		c.Enqueue(resp)
+		return
+	}
+
+	if cmd == "MOVE" {
+		handleMove(h, c, fields)
+		return
+	}
+
 	c.Enqueue("OK")
 }
 
@@ -57,6 +99,74 @@ func handleConnect(h *Hub, c *Client, fields []string) {
 	h.Register(c)
 	c.Enqueue("OK connected")
 	logger.Log.Info("player_connected", "player", name, "ip", c.conn.RemoteAddr())
+}
+
+func handleChat(h *Hub, c *Client, fields []string) {
+	if len(fields) < 3 {
+		c.Enqueue("ERR 100 MISSING_ARG")
+		return
+	}
+	scope := strings.ToUpper(fields[1])
+	msg := strings.Join(fields[2:], " ")
+	switch scope {
+	case "GLOBAL":
+		h.Broadcast("global", "", "", fmt.Sprintf("EVT GLOBAL CHAT %s %s", c.name, msg))
+		c.Enqueue("OK")
+	case "ROOM":
+		if c.roomID == "" {
+			c.Enqueue("ERR 100 NOT_IN_ROOM")
+			return
+		}
+		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM CHAT %s %s", c.name, msg))
+		c.Enqueue("OK")
+	default:
+		c.Enqueue("ERR 100 INVALID_SCOPE")
+	}
+}
+
+func handleWho(h *Hub, c *Client) {
+	roomList := h.RoomPlayers(c.roomID)
+	if roomList == nil {
+		roomList = []string{}
+	}
+	data, _ := json.Marshal(whoResponse{
+		Room:   roomList,
+		Server: h.PlayerCount(),
+	})
+	c.Enqueue(fmt.Sprintf("OK %s", string(data)))
+}
+
+func handleGroup(h *Hub, c *Client, fields []string) {
+	if len(fields) < 3 {
+		c.Enqueue("ERR 100 MISSING_ARG")
+		return
+	}
+	action := strings.ToUpper(fields[1])
+	target := fields[2]
+	if action == "INVITE" {
+		if !h.NameTaken(target) {
+			c.Enqueue("ERR 401 NOT_FOUND")
+			return
+		}
+		h.Broadcast("direct", "", target, fmt.Sprintf("EVT GROUP INVITE %s", c.name))
+		c.Enqueue("OK")
+		return
+	}
+	c.Enqueue("ERR 100 UNKNOWN_ACTION")
+}
+
+func handleMove(h *Hub, c *Client, fields []string) {
+	if len(fields) < 2 {
+		c.Enqueue("ERR 100 MISSING_ARG")
+		return
+	}
+	newRoom := fields[1]
+	if c.roomID != "" && c.roomID != newRoom {
+		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
+	}
+	c.roomID = newRoom
+	h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE ENTER %s", c.name))
+	c.Enqueue(fmt.Sprintf("OK room=%s", newRoom))
 }
 
 func rateAllow(c *Client) bool {
