@@ -50,7 +50,7 @@ func (h *Hub) Unregister(c *Client) {
 	if !ok {
 		return
 	}
-	close(c.send)
+	c.Close()
 	logger.Log.Info("player_disconnected", "player", c.name)
 	if c.roomID != "" {
 		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))

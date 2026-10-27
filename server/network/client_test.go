@@ -34,3 +34,17 @@ func TestEnqueueReturnsFalseWhenChannelFull(t *testing.T) {
 		t.Fatal("Enqueue returned true on full channel")
 	}
 }
+
+func TestClientCloseIsIdempotent(t *testing.T) {
+	c := &Client{send: make(chan string, 1)}
+	c.Close()
+	c.Close()
+}
+
+func TestEnqueueReturnsFalseWhenChannelClosed(t *testing.T) {
+	c := &Client{send: make(chan string, 1)}
+	c.Close()
+	if c.Enqueue("test") {
+		t.Fatal("Enqueue returned true on closed channel")
+	}
+}

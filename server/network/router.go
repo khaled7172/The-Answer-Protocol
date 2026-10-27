@@ -36,7 +36,7 @@ func Route(h *Hub, c *Client, line string) {
 
 	if cmd == "QUIT" {
 		c.Enqueue("OK bye")
-		c.conn.Close()
+		c.Close()
 		return
 	}
 

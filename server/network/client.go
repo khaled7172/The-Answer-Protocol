@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Client struct {
 	roomID    string
 	cmdCount  int
 	cmdWindow time.Time
+	closeOnce sync.Once
 }
 
 func NewClient(conn net.Conn) *Client {
@@ -25,6 +27,7 @@ func NewClient(conn net.Conn) *Client {
 }
 
 func (c *Client) WriteLoop() {
+	defer c.conn.Close()
 	for msg := range c.send {
 		fmt.Fprintf(c.conn, "%s\n", msg)
 	}
@@ -34,6 +37,7 @@ func (c *Client) ReadLoop(h *Hub) {
 	defer func() {
 		h.Unregister(c)
 		c.conn.Close()
+		c.Close()
 	}()
 
 	scanner := bufio.NewScanner(c.conn)
@@ -42,7 +46,18 @@ func (c *Client) ReadLoop(h *Hub) {
 	}
 }
 
-func (c *Client) Enqueue(msg string) bool {
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		close(c.send)
+	})
+}
+
+func (c *Client) Enqueue(msg string) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
 	select {
 	case c.send <- msg:
 		return true
