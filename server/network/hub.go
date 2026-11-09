@@ -55,6 +55,18 @@ func (h *Hub) Unregister(c *Client) {
 	if c.roomID != "" {
 		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
 	}
+	if c.groupID != "" {
+		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP LEAVE %s", c.name))
+	}
+}
+
+func (h *Hub) ClientGroup(name string) string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if c, ok := h.clients[name]; ok {
+		return c.groupID
+	}
+	return ""
 }
 
 func (h *Hub) NameTaken(name string) bool {
@@ -110,6 +122,12 @@ func (h *Hub) dispatch(msg broadcastMsg) {
 	case "direct":
 		if c, ok := h.clients[msg.target]; ok {
 			c.Enqueue(msg.payload)
+		}
+	case "group":
+		for _, c := range h.clients {
+			if c.groupID != "" && c.groupID == msg.target {
+				c.Enqueue(msg.payload)
+			}
 		}
 	}
 }

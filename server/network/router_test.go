@@ -209,11 +209,29 @@ func TestRouteWhoReturnsJsonCounts(t *testing.T) {
 	}
 }
 
+func TestRouteGroupCreate(t *testing.T) {
+	h := NewHub()
+	c := newTestClient("alice")
+	h.Register(c)
+
+	Route(h, c, "GROUP CREATE")
+	resp := <-c.send
+	if resp != "OK group=grp_alice" {
+		t.Fatalf("expected OK group=grp_alice, got %q", resp)
+	}
+
+	Route(h, c, "GROUP CREATE")
+	if resp2 := <-c.send; resp2 != "ERR 402 ALREADY_IN_GROUP" {
+		t.Fatalf("expected ERR 402 ALREADY_IN_GROUP, got %q", resp2)
+	}
+}
+
 func TestRouteGroupInviteSucceeds(t *testing.T) {
 	h := NewHub()
 	go h.Run()
 
 	c1 := newTestClient("alice")
+	c1.groupID = "grp_alice"
 	c2 := newTestClient("bob")
 	h.Register(c1)
 	h.Register(c2)
@@ -235,14 +253,109 @@ func TestRouteGroupInviteSucceeds(t *testing.T) {
 	}
 }
 
-func TestRouteGroupInviteTargetNotFound(t *testing.T) {
+func TestRouteGroupInviteNotInGroup(t *testing.T) {
 	h := NewHub()
 	c := newTestClient("alice")
 	h.Register(c)
 
+	Route(h, c, "GROUP INVITE bob")
+	if resp := <-c.send; resp != "ERR 401 NOT_IN_GROUP" {
+		t.Fatalf("expected ERR 401 NOT_IN_GROUP, got %q", resp)
+	}
+}
+
+func TestRouteGroupInviteTargetNotFound(t *testing.T) {
+	h := NewHub()
+	c := newTestClient("alice")
+	c.groupID = "grp_alice"
+	h.Register(c)
+
 	Route(h, c, "GROUP INVITE ghost")
-	if resp := <-c.send; resp != "ERR 401 NOT_FOUND" {
-		t.Fatalf("expected ERR 401 NOT_FOUND, got %q", resp)
+	if resp := <-c.send; resp != "ERR 404 NOT_FOUND" {
+		t.Fatalf("expected ERR 404 NOT_FOUND, got %q", resp)
+	}
+}
+
+func TestRouteGroupJoinAndLeave(t *testing.T) {
+	h := NewHub()
+	go h.Run()
+
+	c1 := newTestClient("alice")
+	c1.groupID = "grp_alice"
+	c2 := newTestClient("bob")
+	h.Register(c1)
+	h.Register(c2)
+
+	Route(h, c2, "GROUP JOIN alice")
+	resp := <-c2.send
+	if resp != "OK group=grp_alice" {
+		t.Fatalf("expected OK group=grp_alice, got %q", resp)
+	}
+
+	select {
+	case msg := <-c1.send:
+		if msg != "EVT GROUP JOIN bob" {
+			t.Fatalf("expected EVT GROUP JOIN bob, got %q", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for group join EVT on c1")
+	}
+
+	select {
+	case <-c2.send:
+	default:
+	}
+
+	Route(h, c2, "GROUP LEAVE")
+	respLeave := <-c2.send
+	if respLeave != "OK" {
+		t.Fatalf("expected OK, got %q", respLeave)
+	}
+
+	select {
+	case msg := <-c1.send:
+		if msg != "EVT GROUP LEAVE bob" {
+			t.Fatalf("expected EVT GROUP LEAVE bob, got %q", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for group leave EVT")
+	}
+}
+
+func TestRouteChatGroup(t *testing.T) {
+	h := NewHub()
+	go h.Run()
+
+	c1 := newTestClient("alice")
+	c1.groupID = "grp_team"
+	c2 := newTestClient("bob")
+	c2.groupID = "grp_team"
+	c3 := newTestClient("charlie")
+	c3.groupID = "grp_other"
+
+	h.Register(c1)
+	h.Register(c2)
+	h.Register(c3)
+
+	Route(h, c1, "CHAT GROUP team meeting now")
+	resp := <-c1.send
+	if resp != "OK" {
+		t.Fatalf("expected OK, got %q", resp)
+	}
+
+	select {
+	case msg := <-c2.send:
+		if msg != "EVT GROUP CHAT alice team meeting now" {
+			t.Fatalf("expected EVT GROUP CHAT, got %q", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for group chat EVT")
+	}
+
+	select {
+	case msg := <-c3.send:
+		t.Fatalf("unexpected message delivered to other group: %q", msg)
+	default:
 	}
 }
 

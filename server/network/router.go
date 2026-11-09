@@ -119,6 +119,13 @@ func handleChat(h *Hub, c *Client, fields []string) {
 		}
 		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM CHAT %s %s", c.name, msg))
 		c.Enqueue("OK")
+	case "GROUP":
+		if c.groupID == "" {
+			c.Enqueue("ERR 401 NOT_IN_GROUP")
+			return
+		}
+		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP CHAT %s %s", c.name, msg))
+		c.Enqueue("OK")
 	default:
 		c.Enqueue("ERR 100 INVALID_SCOPE")
 	}
@@ -137,22 +144,65 @@ func handleWho(h *Hub, c *Client) {
 }
 
 func handleGroup(h *Hub, c *Client, fields []string) {
-	if len(fields) < 3 {
+	if len(fields) < 2 {
 		c.Enqueue("ERR 100 MISSING_ARG")
 		return
 	}
 	action := strings.ToUpper(fields[1])
-	target := fields[2]
-	if action == "INVITE" {
+	switch action {
+	case "CREATE":
+		if c.groupID != "" {
+			c.Enqueue("ERR 402 ALREADY_IN_GROUP")
+			return
+		}
+		c.groupID = "grp_" + c.name
+		c.Enqueue(fmt.Sprintf("OK group=%s", c.groupID))
+	case "INVITE":
+		if len(fields) < 3 {
+			c.Enqueue("ERR 100 MISSING_ARG")
+			return
+		}
+		if c.groupID == "" {
+			c.Enqueue("ERR 401 NOT_IN_GROUP")
+			return
+		}
+		target := fields[2]
 		if !h.NameTaken(target) {
-			c.Enqueue("ERR 401 NOT_FOUND")
+			c.Enqueue("ERR 404 NOT_FOUND")
 			return
 		}
 		h.Broadcast("direct", "", target, fmt.Sprintf("EVT GROUP INVITE %s", c.name))
 		c.Enqueue("OK")
-		return
+	case "JOIN":
+		if len(fields) < 3 {
+			c.Enqueue("ERR 100 MISSING_ARG")
+			return
+		}
+		if c.groupID != "" {
+			c.Enqueue("ERR 402 ALREADY_IN_GROUP")
+			return
+		}
+		leader := fields[2]
+		leadGrp := h.ClientGroup(leader)
+		if leadGrp == "" {
+			c.Enqueue("ERR 404 NOT_FOUND")
+			return
+		}
+		c.groupID = leadGrp
+		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP JOIN %s", c.name))
+		c.Enqueue(fmt.Sprintf("OK group=%s", c.groupID))
+	case "LEAVE":
+		if c.groupID == "" {
+			c.Enqueue("ERR 401 NOT_IN_GROUP")
+			return
+		}
+		oldGrp := c.groupID
+		c.groupID = ""
+		h.Broadcast("group", "", oldGrp, fmt.Sprintf("EVT GROUP LEAVE %s", c.name))
+		c.Enqueue("OK")
+	default:
+		c.Enqueue("ERR 100 UNKNOWN_ACTION")
 	}
-	c.Enqueue("ERR 100 UNKNOWN_ACTION")
 }
 
 func handleMove(h *Hub, c *Client, fields []string) {

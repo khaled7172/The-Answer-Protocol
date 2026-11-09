@@ -16,6 +16,7 @@ type Client struct {
 	send      chan string
 	name      string
 	roomID    string
+	groupID   string
 	cmdCount  int
 	cmdWindow time.Time
 	closeOnce sync.Once
