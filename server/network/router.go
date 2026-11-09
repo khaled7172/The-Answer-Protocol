@@ -9,7 +9,10 @@ import (
 	"tap/server/logger"
 )
 
-const maxCmdsPerSec = 20
+const (
+	maxCmdsPerSec = 20
+	errMissingArg = "ERR 100 MISSING_ARG"
+)
 
 var GameHandler func(playerName, roomID string, fields []string) (string, string)
 
@@ -87,7 +90,7 @@ func Route(h *Hub, c *Client, line string) {
 
 func handleConnect(h *Hub, c *Client, fields []string) {
 	if len(fields) < 2 {
-		c.Enqueue("ERR 100 MISSING_ARG")
+		c.Enqueue(errMissingArg)
 		return
 	}
 	name := fields[1]
@@ -103,7 +106,7 @@ func handleConnect(h *Hub, c *Client, fields []string) {
 
 func handleChat(h *Hub, c *Client, fields []string) {
 	if len(fields) < 3 {
-		c.Enqueue("ERR 100 MISSING_ARG")
+		c.Enqueue(errMissingArg)
 		return
 	}
 	scope := strings.ToUpper(fields[1])
@@ -145,7 +148,7 @@ func handleWho(h *Hub, c *Client) {
 
 func handleGroup(h *Hub, c *Client, fields []string) {
 	if len(fields) < 2 {
-		c.Enqueue("ERR 100 MISSING_ARG")
+		c.Enqueue(errMissingArg)
 		return
 	}
 	action := strings.ToUpper(fields[1])
@@ -159,7 +162,7 @@ func handleGroup(h *Hub, c *Client, fields []string) {
 		c.Enqueue(fmt.Sprintf("OK group=%s", c.groupID))
 	case "INVITE":
 		if len(fields) < 3 {
-			c.Enqueue("ERR 100 MISSING_ARG")
+			c.Enqueue(errMissingArg)
 			return
 		}
 		if c.groupID == "" {
@@ -175,7 +178,7 @@ func handleGroup(h *Hub, c *Client, fields []string) {
 		c.Enqueue("OK")
 	case "JOIN":
 		if len(fields) < 3 {
-			c.Enqueue("ERR 100 MISSING_ARG")
+			c.Enqueue(errMissingArg)
 			return
 		}
 		if c.groupID != "" {
@@ -207,7 +210,7 @@ func handleGroup(h *Hub, c *Client, fields []string) {
 
 func handleMove(h *Hub, c *Client, fields []string) {
 	if len(fields) < 2 {
-		c.Enqueue("ERR 100 MISSING_ARG")
+		c.Enqueue(errMissingArg)
 		return
 	}
 	newRoom := fields[1]
