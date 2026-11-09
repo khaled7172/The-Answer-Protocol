@@ -72,13 +72,13 @@ func TestHubRoomPlayersReturnsMatchingClients(t *testing.T) {
 	}
 }
 
-func TestHubSendDispatchesBroadcast(t *testing.T) {
+func TestHubBroadcastDispatchesMessage(t *testing.T) {
 	h := NewHub()
 	c := newTestClient("alice")
 	h.Register(c)
 	go h.Run()
 
-	h.Send("global", "", "", "EVT TEST")
+	h.Broadcast("global", "", "", "EVT TEST")
 
 	select {
 	case msg := <-c.send:

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"tap/server/logger"
@@ -19,7 +18,6 @@ type Client struct {
 	groupID   string
 	cmdCount  int
 	cmdWindow time.Time
-	closeOnce sync.Once
 }
 
 func NewClient(conn net.Conn) *Client {
@@ -31,7 +29,7 @@ func NewClient(conn net.Conn) *Client {
 }
 
 func (c *Client) WriteLoop() {
-	defer c.conn.Close()
+	defer c.Close()
 	for msg := range c.send {
 		fmt.Fprintf(c.conn, "%s\n", msg)
 	}
@@ -40,8 +38,8 @@ func (c *Client) WriteLoop() {
 func (c *Client) ReadLoop(h *Hub) {
 	defer func() {
 		h.Unregister(c)
-		c.conn.Close()
 		c.Close()
+		close(c.send)
 	}()
 
 	scanner := bufio.NewScanner(c.conn)
@@ -51,17 +49,19 @@ func (c *Client) ReadLoop(h *Hub) {
 }
 
 func (c *Client) Close() {
-	c.closeOnce.Do(func() {
-		close(c.send)
-	})
+	if c.conn != nil {
+		c.conn.Close()
+	}
 }
 
-func (c *Client) Enqueue(msg string) (ok bool) {
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
+func (c *Client) RemoteAddr() string {
+	if c.conn != nil {
+		return c.conn.RemoteAddr().String()
+	}
+	return ""
+}
+
+func (c *Client) Enqueue(msg string) bool {
 	logger.Log.Debug("response_sent", "player", c.name, "response", msg)
 	if strings.HasPrefix(msg, "ERR ") {
 		logger.Log.Warn("error_sent", "player", c.name, "code", msg)

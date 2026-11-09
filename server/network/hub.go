@@ -50,7 +50,6 @@ func (h *Hub) Unregister(c *Client) {
 	if !ok {
 		return
 	}
-	c.Close()
 	logger.Log.Info("player_disconnected", "player", c.name)
 	if c.roomID != "" {
 		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
@@ -96,10 +95,6 @@ func (h *Hub) RoomPlayers(roomID string) []string {
 
 func (h *Hub) Broadcast(scope, roomID, target, payload string) {
 	h.broadcast <- broadcastMsg{scope, roomID, target, payload}
-}
-
-func (h *Hub) Send(scope, roomID, target, payload string) {
-	h.Broadcast(scope, roomID, target, payload)
 }
 
 func (h *Hub) dispatch(msg broadcastMsg) {

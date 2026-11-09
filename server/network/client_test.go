@@ -35,16 +35,16 @@ func TestEnqueueReturnsFalseWhenChannelFull(t *testing.T) {
 	}
 }
 
-func TestClientCloseIsIdempotent(t *testing.T) {
-	c := &Client{send: make(chan string, 1)}
-	c.Close()
-	c.Close()
-}
+func TestClientCloseClosesConnection(t *testing.T) {
+	srv, cli := net.Pipe()
+	defer srv.Close()
 
-func TestEnqueueReturnsFalseWhenChannelClosed(t *testing.T) {
-	c := &Client{send: make(chan string, 1)}
+	c := NewClient(cli)
 	c.Close()
-	if c.Enqueue("test") {
-		t.Fatal("Enqueue returned true on closed channel")
+
+	buf := make([]byte, 8)
+	_, err := srv.Read(buf)
+	if err == nil {
+		t.Fatal("expected read error on closed pipe")
 	}
 }

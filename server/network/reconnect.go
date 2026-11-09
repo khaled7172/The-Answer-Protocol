@@ -37,24 +37,7 @@ func (t *ReconnectTracker) Record(ip string) (bool, int) {
 	valid = append(valid, now)
 	t.attempts[ip] = valid
 
-	if len(t.attempts) > 256 {
-		for k, v := range t.attempts {
-			var active []time.Time
-			for _, ts := range v {
-				if ts.After(cutoff) {
-					active = append(active, ts)
-				}
-			}
-			if len(active) == 0 {
-				delete(t.attempts, k)
-			} else {
-				t.attempts[k] = active
-			}
-		}
-	}
-
-	count := len(valid)
-	return count > t.limit, count
+	return len(valid) > t.limit, len(valid)
 }
 
 func extractIP(addr string) string {
