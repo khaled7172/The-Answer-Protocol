@@ -185,18 +185,19 @@ The server features structured JSON logging implemented with Go's `log/slog` pac
 
 Per the official 42 Subject specification (Chapters II & VII.2), responsibilities are divided between two group members:
 
-### 🧑‍💻 khhammou (Person 1) — *Server Core & CLI Client*
+### 🧑‍💻 khhammou (Person 1) — *Server Core, Combat Engine & Web GUI*
 - **Server Network Architecture**: TCP socket listener, Accept loop, per-client goroutine pumps, and channel buffering (`server/network/server.go`, `client.go`).
 - **Hub & Routing Engine**: Central thread-safe client registry, broadcast fanout, and command router (`server/network/hub.go`, `router.go`).
 - **Structured Logging & Abuse Detection**: JSON logging, sliding-window command rate limiting, and rapid reconnect mitigation (`server/logger/logger.go`, `server/network/reconnect.go`).
-- **Game Engine & Validation**: YAML loading, room connectivity validation, combat mechanics, and quest progression (`server/game/`).
-- **CLI Client**: Standard library terminal application (`cli_client/main.go`).
+- **Combat & State Engine**: Turn-based combat system, health tracking, player state machine, and command routing (`server/game/game.go`, `types.go`).
+- **Local Web UI (Zero-CGO)**: Browser-based graphical interface powered by standard library `net/http` and WebSocket/TCP bridge (`gui_client/main.go`, `gui_client/index.html`).
 - **Build Infrastructure & Tests**: `Makefile`, `go.mod`, and 41 comprehensive unit tests.
 
-### 🎨 ekarout (Person 2) — *GUI Client & World Design*
-- **Local Web UI (Zero-CGO)**: Browser-based graphical interface powered by standard library `net/http` and WebSocket/TCP bridge (`gui_client/main.go`, `gui_client/index.html`).
+### 🛠️ ekarout (Person 2) — *World Lore, YAML Engine & Terminal CLI *
 - **World Design & Lore**: Static game world configuration featuring 8+ rooms, circular routes, branching paths, NPCs, items, and quests (`world_data/world.yaml`).
-- **Documentation**: World lore guide, room map layout, and user-facing walkthroughs in `README.md`.
+- **Backend YAML Loader & Validator**: Go engine that parses `world.yaml` using `gopkg.in/yaml.v3`, validates exit graph connectivity, verifies item/NPC spawns, and includes unit tests (`server/game/world.go`, `server/game/world_test.go`).
+- **Terminal CLI Client**: Pure Go interactive terminal client with ANSI color formatting, unbuffered prompt reading, and clean exit handling (`cli_client/main.go`).
+- **Documentation**: World lore guide, room map layout, and CLI walkthroughs in `README.md`.
 
 ---
 
