@@ -1,9 +1,8 @@
-*This project has been created as part of the 42 curriculum by khhammou, cbahry, adadra.*
+*This project has been created as part of the 42 curriculum by khhammou, ekarout.*
 
 # The Answer Protocol (TAP)
 
-> ⚠️ **This README is a work in progress.** It will be completed in Phase 3 by adadra.
-> All sections below are required by the 42 curriculum (PDF Chapter VI).
+> ⚠️ **This README is a work in progress.**.
 
 ---
 
