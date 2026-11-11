@@ -1,81 +1,201 @@
-# world.yaml
-#
-# YOU must design and fill this file. Requirements from the PDF:
-#   - 8+ locations forming at least one loop + one branch (no dead-end-only maps)
-#   - 3+ distinct NPC roles (e.g., dialogue, quest-giver, enemy)
-#   - 4+ distinct items (at least 2 must be obtainable: true)
-#   - 2+ quests (fetch, defeat, deliver, etc.)
-#
-# Validate your YAML before every commit: https://www.yamllint.com
-# A single bad indentation WILL break Person 2's Go parser.
-#
-# See example_world.yaml for a tiny (non-compliant) structure reference.
-
 world:
   locations:
-    # Replace / expand these with your actual world design.
-    # Each room needs: name, description, exits (map direction → room_id)
-    # Optional: items (list of item IDs), spawns (list of {npc_type, count})
-    #
-    # Example:
-    # start:
-    #   name: "Village Square"
-    #   description: "..."
-    #   exits:
-    #     north: "tavern"
-    #   spawns:
-    #     - npc_type: "guard"
-    #       count: 1
+    forest_clearing:
+      name: "The Whispering Clearing"
+      description: "A peaceful clearing surrounded by enormous trees and glowing flowers. Travelers often gather here before exploring the forest."
+      exits:
+        north: "fairy_village"
+        east: "mushroom_grove"
+        south: "silver_river"
+      items: ["wooden_sword"]
+      spawns:
+        - npc_type: "guide"
+          count: 1
+
+    fairy_village:
+      name: "Luminara"
+      description: "A tiny village built among giant flowers and hollow trees. Colorful lights illuminate the homes of its fairy inhabitants."
+      exits:
+        south: "forest_clearing"
+        east: "elder_tree"
+      spawns:
+        - npc_type: "merchant"
+          count: 1
+
+    elder_tree:
+      name: "The Ancient Elder"
+      description: "A gigantic ancient tree believed to hold the memories and magic of the entire forest."
+      exits:
+        west: "fairy_village"
+        south: "moonlit_pond"
+      spawns:
+        - npc_type: "spirit"
+          count: 1
+
+    moonlit_pond:
+      name: "The Moonlit Pond"
+      description: "A peaceful pond reflecting a mysterious moon that never disappears, surrounded by glowing flowers."
+      exits:
+        north: "elder_tree"
+        west: "mushroom_grove"
+      items: ["health_potion"]
+
+    mushroom_grove:
+      name: "The Glowing Mushroom Grove"
+      description: "A colorful clearing filled with enormous luminous mushrooms. Strange creatures hide among their glowing caps."
+      exits:
+        west: "forest_clearing"
+        east: "moonlit_pond"
+        north: "crystal_cave"
+      spawns:
+        - npc_type: "wolf"
+          count: 4
+
+    crystal_cave:
+      name: "The Crystal Cave"
+      description: "A hidden cave illuminated by magical blue crystals. Its narrow tunnels echo with strange noises."
+      exits:
+        south: "mushroom_grove"
+        north: "forgotten_shrine"
+      items: ["magic_crystal"]
+      spawns:
+        - npc_type: "guardian"
+          count: 1
+
+    forgotten_shrine:
+      name: "The Forgotten Shrine"
+      description: "An abandoned stone shrine covered in ancient runes. It holds secrets about the origins of the forest's magic."
+      exits:
+        south: "crystal_cave"
+
+    silver_river:
+      name: "The Silver River"
+      description: "A sparkling river flowing through the southern forest. Its crystal-clear waters are said to possess healing properties."
+      exits:
+        north: "forest_clearing"
+        east: "hidden_waterfall"
+
+    hidden_waterfall:
+      name: "The Hidden Waterfall"
+      description: "A secluded waterfall hiding a small grotto behind its cascading waters. Few travelers know of its existence."
+      exits:
+        west: "silver_river"
+      items: ["steel_sword"]
 
   items:
-    # Define all item templates here.
-    # Each item needs: name, description, obtainable (bool)
-    # Optional: effect { type: "heal"/"weapon", amount/damage_bonus }
-    #
-    # Example:
-    # herbs:
-    #   name: "Healing Herbs"
-    #   description: "..."
-    #   obtainable: true
-    #   effect:
-    #     type: "heal"
-    #     amount: 15
+    wooden_sword:
+      name: "Wooden Sword"
+      description: "A simple sword carved from sturdy forest wood. It is lightweight and useful for defending yourself against weak creatures."
+      obtainable: true
+      effect:
+        type: "damage"
+        amount: 15
+    health_potion:
+      name: "Magic Potion"
+      description: "A small glass bottle filled with glowing pink liquid. Drinking it restores 20 health points."
+      obtainable: true
+      effect:
+        type: "heal"
+        amount: 20
+    magic_crystal:
+      name: "Magic Crystal"
+      description: "A mysterious blue crystal containing a fragment of ancient forest magic. The Forest Spirit may need it to restore the forest."
+      obtainable: true
+      effect:
+        type: "quest"
+    steel_sword:
+      name: "Steel Sword"
+      description: "A sharp and durable sword forged from steel. Much stronger than a wooden sword, it deals greater damage to enemies."
+      obtainable: true
+      effect:
+        type: "damage"
+        amount: 30
+    ancient_seed:
+      name: "Ancient Seed"
+      description: "A rare glowing seed carrying the forest's original magic. It can restore life to corrupted lands and help the Whispering Woods grow strong again."
+      obtainable: true
+      effect:
+        type: "quest_reward"
 
   npcs:
-    # Define all NPC templates here.
-    # Each NPC needs: name, description, role, dialogue (list), stats {hp, damage, hostile}
-    # Optional: quests (list of quest IDs this NPC gives)
-    #
-    # Example:
-    # guard:
-    #   name: "Village Guard"
-    #   description: "..."
-    #   role: "dialogue"
-    #   dialogue:
-    #     - "Stay safe, traveler."
-    #   stats:
-    #     hp: 20
-    #     damage: 4
-    #     hostile: false
+    guide:
+      name: "Forest Guide"
+      description: "A wise old traveler who has spent years exploring the Whispering Woods. He knows the forest paths and warns visitors about dangerous creatures."
+      dialogue:
+        - "Welcome, traveler! The Whispering Woods are beautiful, but not all their secrets are friendly."
+        - "Follow the glowing mushrooms if you wish to find the Crystal Cave."
+        - "Beware of the corrupted wolves. They roam the forest searching for their next victim."
+      stats:
+        hp: 50
+
+    merchant:
+      name: "Fairy Merchant"
+      description: "A cheerful fairy who runs a small shop in Luminara. She collects rare objects and offers useful supplies to travelers."
+      dialogue:
+        - "Welcome to my little shop! Looking for something special?"
+        - "A good weapon can make all the difference when exploring these woods."
+        - "Bring me something rare, and perhaps we can make a deal!"
+      stats:
+        hp: 50
+
+    spirit:
+      name: "Forest Spirit"
+      description: "The ancient guardian of the Whispering Woods. Its power is fading because a dark corruption is spreading throughout the forest."
+      dialogue:
+        - "Traveler... I can feel the darkness growing stronger. Our forest needs your help."
+        - "A corrupted wolf pack has been threatening the creatures of this forest. Please stop them."
+        - "The Magic Crystal holds ancient power. Find it in the Crystal Cave and bring it to me."
+      stats:
+        hp: 50
+
+    wolf:
+      name: "Corrupted Wolf"
+      description: "A once-peaceful forest wolf corrupted by dark magic. Its glowing red eyes reveal its violent nature."
+      dialogue:
+        - "Grrrr... You do not belong here!"
+        - "The forest will fall to darkness!"
+        - "Leave this place before I tear you apart!"
+      stats:
+        hp: 40
+        damage: 5
+        hostile: true
+
+    guardian:
+      name: "Crystal Guardian"
+      description: "An ancient creature made of stone and glowing crystals. It protects the Crystal Cave and attacks anyone who tries to steal its treasures."
+      dialogue:
+        - "Halt! None shall pass."
+        - "The crystal must remain protected."
+        - "You will not take what I have sworn to guard!"
+      stats:
+        hp: 70
+        damage: 15
+        hostile: true
 
   quests:
-    # Define all quests here.
-    # Each quest needs: name, description, giver_npc, objective {type, item/npc, quantity},
-    #                   reward {gold, item, xp}, completion_dialogue
-    #
-    # Objective types: "fetch_item", "defeat_npc", "deliver_item"
-    #
-    # Example:
-    # fetch_herbs:
-    #   name: "The Innkeeper's Remedy"
-    #   description: "..."
-    #   giver_npc: "innkeeper"
-    #   objective:
-    #     type: "fetch_item"
-    #     item: "herbs"
-    #     quantity: 1
-    #   reward:
-    #     gold: 20
-    #     item: "ale"
-    #     xp: 50
-    #   completion_dialogue: "..."
+    defeat_wolves: 
+      name: "The Corrupted Forest"
+      description: "Defeat 2 Corrupted Wolves and report back to the Forest Spirit"
+      giver_npc: "spirit"
+      objective:
+        type: "defeat_npc"
+        item: "wolf"
+        quantity: 2
+      reward:
+        gold: 50
+        item: "health_potion"
+        xp: 50
+      completion_dialogue: "You have done well, traveler! The forest is a little safer thanks to you. Accept this potion and gold as a token of my gratitude."
+    find_magic_crystal:
+      name: "The Lost Magic"
+      description: "Find the Magic Crystal in the Crystal Cave and deliver it to the Forest Spirit"
+      giver_npc: "spirit"
+      objective:
+        type: "find_item"
+        item: "magic_crystal"
+        quantity: 1
+      reward:
+        gold: 50
+        item: "ancient_seed"
+        xp: 50
+      completion_dialogue: "You have found the ancient crystal! Its magic will help restore the forest. Take this Ancient Seed. It holds the power to bring life back to the corrupted lands."
