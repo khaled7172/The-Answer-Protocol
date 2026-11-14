@@ -1,4 +1,6 @@
 world:
+  starting_location:
+    "forest_clearing"
   locations:
     forest_clearing:
       name: "The Whispering Clearing"
