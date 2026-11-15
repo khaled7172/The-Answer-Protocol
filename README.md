@@ -149,7 +149,66 @@ The server strictly adheres to **RFC 42TAP** with zero deviations:
 
 ## World Design
 
-*(To be documented by ekarout from `world_data/world.yaml`)*
+### The Whispering Woods
+
+A dark corruption is spreading through the Whispering Woods. The Forest Spirit — ancient guardian of this realm — is weakening, and a wolf pack twisted by shadow threatens every living creature within the trees. You arrive at a glowing clearing with nothing but a wooden sword and the word of an old guide. What you do next shapes the forest's fate.
+
+The world consists of 9 locations, defined in `world_data/world.yaml`. Two quests drive the story: **The Corrupted Forest** (defeat wolves, given by the Spirit) and **The Lost Magic** (retrieve the Magic Crystal, also from the Spirit). Both reward gold, XP, and items.
+
+---
+
+### Map
+
+```
+        [Luminara] --- [The Ancient Elder]
+            |                   |
+   [The Whispering Clearing] [Moonlit Pond]
+       /          \           /
+[Silver River] [Mushroom Grove]
+       |                |
+[Hidden Waterfall]  [Crystal Cave]
+                         |
+                  [Forgotten Shrine]
+```
+
+**Route overview:**
+
+```
+forest_clearing (start)
+  north -> fairy_village -> elder_tree -> moonlit_pond -> mushroom_grove (loop back west)
+  east  -> mushroom_grove -> crystal_cave -> forgotten_shrine (dead end)
+  south -> silver_river -> hidden_waterfall (dead end)
+```
+
+The map forms one main loop (clearing -> fairy village -> elder tree -> moonlit pond -> mushroom grove -> clearing) with two dead-end branches: the northern cave chain leading to the Forgotten Shrine, and the southern river path ending at the Hidden Waterfall.
+
+---
+
+### Locations
+
+| Location | Key Contents |
+|---|---|
+| The Whispering Clearing | Start point, Wooden Sword, Forest Guide |
+| Luminara | Fairy Merchant |
+| The Ancient Elder | Forest Spirit |
+| The Moonlit Pond | Health Potion |
+| The Glowing Mushroom Grove | 4x Corrupted Wolf |
+| The Crystal Cave | Magic Crystal, Crystal Guardian |
+| The Forgotten Shrine | Dead end, ancient runes |
+| The Silver River | Passage south |
+| The Hidden Waterfall | Steel Sword, hidden grotto |
+
+---
+
+### Items
+
+| Item | Effect | Found At |
+|---|---|---|
+| Wooden Sword | 15 damage | Whispering Clearing |
+| Health Potion | +20 HP | Moonlit Pond |
+| Magic Crystal | Quest item | Crystal Cave |
+| Steel Sword | 30 damage | Hidden Waterfall |
+| Ancient Seed | Quest reward | — |
 
 ---
 
@@ -212,21 +271,21 @@ make install
 ```bash
 make run-server
 # Or directly:
-go run server/network/*.go
+go run ./server/network/
 ```
 
 ### Run the CLI Client
 ```bash
 make run-client
 # Or directly:
-go run cli_client/main.go
+go run ./cli_client/
 ```
 
 ### Run the GUI Client
 ```bash
 make run-client-gui
 # Or directly:
-go run gui_client/main.go
+go run ./gui_client/
 ```
 
 ### Clean Build Artifacts
