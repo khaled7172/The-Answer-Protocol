@@ -1,50 +1,35 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"net"
 	"testing"
 )
 
-func TestNewClientInitializesSendChannel(t *testing.T) {
-	srv, cli := net.Pipe()
-	defer srv.Close()
-	defer cli.Close()
-
-	c := NewClient(cli)
-	if c.send == nil {
-		t.Fatal("NewClient did not initialize send channel")
-	}
-}
-
-func TestEnqueueReturnsTrueWhenChannelHasSpace(t *testing.T) {
-	srv, cli := net.Pipe()
-	defer srv.Close()
-	defer cli.Close()
-
-	c := NewClient(cli)
-	if !c.Enqueue("hello") {
-		t.Fatal("Enqueue returned false on non-full channel")
-	}
-}
-
-func TestEnqueueReturnsFalseWhenChannelFull(t *testing.T) {
+func TestEnqueueDropsWhenChannelFull(t *testing.T) {
 	c := &Client{send: make(chan string, 1)}
-	c.send <- "first"
+	if !c.Enqueue("first") {
+		t.Fatal("Enqueue refused on empty channel")
+	}
 	if c.Enqueue("second") {
-		t.Fatal("Enqueue returned true on full channel")
+		t.Fatal("Enqueue accepted on full channel")
 	}
 }
 
-func TestClientCloseClosesConnection(t *testing.T) {
+func TestQuitDeliversByeBeforeClosing(t *testing.T) {
 	srv, cli := net.Pipe()
-	defer srv.Close()
+	c := NewClient(srv)
+	go c.ReadLoop(newTestHub())
+	go c.WriteLoop()
 
-	c := NewClient(cli)
-	c.Close()
-
-	buf := make([]byte, 8)
-	_, err := srv.Read(buf)
-	if err == nil {
-		t.Fatal("expected read error on closed pipe")
+	r := bufio.NewReader(cli)
+	go cli.Write([]byte("QUIT\n"))
+	line, err := r.ReadString('\n')
+	if err != nil || line != "OK bye\n" {
+		t.Fatalf("expected OK bye, got %q (%v)", line, err)
+	}
+	if _, err := r.ReadByte(); err != io.EOF {
+		t.Fatalf("expected connection closed after bye, got %v", err)
 	}
 }

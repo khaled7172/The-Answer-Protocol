@@ -1,113 +1,89 @@
 package main
 
 import (
-	"tap/server/logger"
+	"slices"
 	"testing"
-	"time"
+
+	"tap/server/game"
+	"tap/server/logger"
 )
 
 func init() {
 	logger.Init()
 }
 
-func newTestClient(name string) *Client {
-	return &Client{
-		name: name,
-		send: make(chan string, 128),
-	}
+func newTestHub() *Hub {
+	return NewHub(game.NewGame(&game.World{
+		StartingLoc: "square",
+		Locations: map[string]game.Room{
+			"square": {Name: "Square", Exits: map[string]string{"north": "tavern"}},
+			"tavern": {Name: "Tavern", Exits: map[string]string{"south": "square"}},
+		},
+	}))
 }
 
-func TestHubNameTakenReturnsFalseInitially(t *testing.T) {
-	h := NewHub()
-	if h.NameTaken("alice") {
-		t.Fatal("NameTaken returned true before any registration")
+func connect(t *testing.T, h *Hub, name string) *Client {
+	t.Helper()
+	c := &Client{send: make(chan string, 128)}
+	Route(h, c, "CONNECT "+name)
+	if msgs := drain(c); len(msgs) == 0 || msgs[0] != "OK connected" {
+		t.Fatalf("connect %s failed: %v", name, msgs)
 	}
+	return c
 }
 
-func TestHubNameTakenReturnsTrueAfterRegister(t *testing.T) {
-	h := NewHub()
-	h.Register(newTestClient("alice"))
-	if !h.NameTaken("alice") {
-		t.Fatal("NameTaken returned false after Register")
-	}
-}
-
-func TestHubPlayerCountTracksRegistrations(t *testing.T) {
-	h := NewHub()
-	if h.PlayerCount() != 0 {
-		t.Fatalf("expected 0, got %d", h.PlayerCount())
-	}
-	h.Register(newTestClient("alice"))
-	h.Register(newTestClient("bob"))
-	if h.PlayerCount() != 2 {
-		t.Fatalf("expected 2, got %d", h.PlayerCount())
-	}
-}
-
-func TestHubUnregisterRemovesClient(t *testing.T) {
-	h := NewHub()
-	c := newTestClient("alice")
-	h.Register(c)
-	h.Unregister(c)
-	if h.NameTaken("alice") {
-		t.Fatal("alice still registered after Unregister")
-	}
-}
-
-func TestHubRoomPlayersReturnsMatchingClients(t *testing.T) {
-	h := NewHub()
-	c1 := newTestClient("alice")
-	c1.roomID = "hall"
-	c2 := newTestClient("bob")
-	c2.roomID = "hall"
-	c3 := newTestClient("charlie")
-	c3.roomID = "tavern"
-	h.Register(c1)
-	h.Register(c2)
-	h.Register(c3)
-
-	players := h.RoomPlayers("hall")
-	if len(players) != 2 {
-		t.Fatalf("expected 2 players in hall, got %d", len(players))
-	}
-}
-
-func TestHubBroadcastDispatchesMessage(t *testing.T) {
-	h := NewHub()
-	c := newTestClient("alice")
-	h.Register(c)
-	go h.Run()
-
-	h.Broadcast("global", "", "", "EVT TEST")
-
-	select {
-	case msg := <-c.send:
-		if msg != "EVT TEST" {
-			t.Fatalf("expected EVT TEST, got %q", msg)
+func drain(c *Client) []string {
+	var msgs []string
+	for {
+		select {
+		case m := <-c.send:
+			msgs = append(msgs, m)
+		default:
+			return msgs
 		}
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for broadcast message")
 	}
 }
 
-func TestHubUnregisterBroadcastsLeaveEvt(t *testing.T) {
-	h := NewHub()
-	c1 := newTestClient("alice")
-	c1.roomID = "hall"
-	c2 := newTestClient("bob")
-	c2.roomID = "hall"
-	h.Register(c1)
-	h.Register(c2)
-	go h.Run()
+func TestHubRegisterRejectsDuplicateName(t *testing.T) {
+	h := newTestHub()
+	if !h.Register(&Client{}, "alice") {
+		t.Fatal("first registration refused")
+	}
+	if h.Register(&Client{}, "alice") {
+		t.Fatal("duplicate registration accepted")
+	}
+	if h.PlayerCount() != 1 {
+		t.Fatalf("expected 1 player, got %d", h.PlayerCount())
+	}
+}
 
-	h.Unregister(c1)
+func TestHubUnregisterRemovesStateThenAnnounces(t *testing.T) {
+	h := newTestHub()
+	alice := connect(t, h, "alice")
+	bob := connect(t, h, "bob")
+	drain(alice)
+	h.SetGroup(alice, "grp_bob")
+	h.SetGroup(bob, "grp_bob")
 
-	select {
-	case msg := <-c2.send:
-		if msg != "EVT ROOM PRESENCE LEAVE alice" {
-			t.Fatalf("expected EVT ROOM PRESENCE LEAVE alice, got %q", msg)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for presence leave event")
+	h.Unregister(alice)
+
+	if _, ok := h.GroupOf("alice"); ok {
+		t.Fatal("alice still registered")
+	}
+	if mates := h.game.RoomMates("bob"); !slices.Equal(mates, []string{"bob"}) {
+		t.Fatalf("alice still in game state: %v", mates)
+	}
+	want := []string{"EVT ROOM PRESENCE LEAVE alice", "EVT GROUP LEAVE alice", "EVT STATS players=1"}
+	if got := drain(bob); !slices.Equal(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+}
+
+func TestHubSendSkipsUnknownNames(t *testing.T) {
+	h := newTestHub()
+	alice := connect(t, h, "alice")
+	h.Send([]game.Event{{To: []string{"ghost", "alice"}, Msg: "EVT TEST"}})
+	if got := drain(alice); !slices.Equal(got, []string{"EVT TEST"}) {
+		t.Fatalf("expected EVT TEST, got %v", got)
 	}
 }

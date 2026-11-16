@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TAP Web Client</title>
+<style>
+:root {
+  --bg: #0b0f19; --card: #131b2e; --border: #23314e; --text: #e2e8f0; --dim: #94a3b8;
+  --cyan: #38bdf8; --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --purple: #a855f7;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--bg); color: var(--text); font: 13px/1.5 ui-monospace, Consolas, monospace;
+  height: 100vh; display: flex; flex-direction: column;
+}
+header, .raw { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--card); }
+header { justify-content: space-between; border-bottom: 1px solid var(--border); }
+.raw { border-top: 1px solid var(--border); }
+.raw input { flex: 1; }
+.logo { font-weight: 700; color: var(--cyan); }
+input, button { font: inherit; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); background: #0f172a; color: var(--text); }
+button { cursor: pointer; background: #1e293b; }
+button:hover { border-color: var(--cyan); }
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #7f1d1d; color: #f87171; }
+.badge.on { background: #14532d; color: #4ade80; }
+.grid { flex: 1; display: grid; grid-template-columns: 260px 1fr 340px; gap: 10px; padding: 10px; min-height: 0; }
+.col { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+.panel h3 { font-size: 12px; color: var(--cyan); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+.grow { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
+.bar { height: 10px; background: #0f172a; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; margin: 4px 0; }
+.fill { height: 100%; background: var(--green); width: 100%; }
+.fill.enemy { background: var(--red); }
+.row { display: flex; gap: 6px; flex-wrap: wrap; }
+.compass { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.card { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 6px; margin-bottom: 4px; background: #0f172a; border-radius: 4px; }
+.dim { color: var(--dim); }
+.tabs span { cursor: pointer; padding: 0 6px; color: var(--dim); }
+.tabs span.active { color: var(--cyan); border-bottom: 2px solid var(--cyan); }
+.feed { flex: 1; overflow-y: auto; background: #0a0e17; padding: 6px; margin: 6px 0; min-height: 0; }
+.msg { word-break: break-word; }
+.err { color: var(--red); } .evt { color: var(--cyan); } .sys { color: var(--dim); }
+.global { color: var(--amber); } .room { color: var(--green); } .group { color: var(--purple); }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } body { height: auto; } }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">TAP Web Client</span>
+  <div class="row">
+    <span id="connBadge" class="badge">DISCONNECTED</span>
+    <input id="username" placeholder="Player name">
+    <button id="btnConnect">Connect</button>
+    <button id="btnQuit" data-cmd="QUIT" hidden>Quit</button>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="col">
+    <div class="panel">
+      <h3>VITALS <button data-cmd="STATUS">Status</button></h3>
+      <div>HP <span id="hpText">100 / 100</span> <span id="hpStatus" class="dim">HEALTHY</span></div>
+      <div class="bar"><div id="hpFill" class="fill"></div></div>
+      <div class="dim">Gold <span id="gold">0</span> · XP <span id="xp">0</span></div>
+    </div>
+
+    <div class="panel">
+      <h3>COMBAT</h3>
+      <div id="peace" class="dim">No active combat.</div>
+      <div id="combat" hidden>
+        <div>Target: <b id="enemyName"></b> <span id="enemyHP"></span></div>
+        <div class="bar"><div id="enemyFill" class="fill enemy"></div></div>
+        <div class="row">
+          <button data-cmd="ATTACK">Attack</button>
+          <button data-cmd="DEFEND">Defend</button>
+          <button data-cmd="FLEE">Flee</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>MOVE</h3>
+      <div class="compass">
+        <span></span><button data-cmd="MOVE north">North</button><span></span>
+        <button data-cmd="MOVE west">West</button><button data-cmd="LOOK">Look</button><button data-cmd="MOVE east">East</button>
+        <span></span><button data-cmd="MOVE south">South</button><span></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>GROUP</h3>
+      <input id="groupTarget" placeholder="Player name" style="width: 100%; margin-bottom: 6px;">
+      <div class="row">
+        <button data-cmd="GROUP CREATE">Create</button>
+        <button data-cmd="GROUP INVITE" data-arg="groupTarget">Invite</button>
+        <button data-cmd="GROUP JOIN" data-arg="groupTarget">Join</button>
+        <button data-cmd="GROUP LEAVE">Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h3><span id="roomName">Not connected</span> <span id="roomId" class="dim"></span></h3>
+      <p id="roomDesc" class="dim"></p>
+      <div id="exits" class="row" style="margin-top: 6px;"></div>
+    </div>
+    <div class="panel"><h3>NPCS <span id="npcsCount">0</span></h3><div id="npcs"></div></div>
+    <div class="panel"><h3>ITEMS ON GROUND <span id="itemsCount">0</span></h3><div id="items"></div></div>
+    <div class="panel"><h3>INVENTORY <button data-cmd="INVENTORY">Inventory</button></h3><div id="inv"></div><span id="invCount" hidden></span></div>
+    <div class="panel"><h3>QUESTS <button data-cmd="QUESTS">Quests</button></h3><div id="quests"></div><span id="questsCount" hidden></span></div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h3>PLAYERS <button data-cmd="WHO">Who</button></h3>
+      <div>Server: <b id="serverCount">0</b> · This room: <b id="roomCount">0</b></div>
+      <div id="roomPlayers" class="dim"></div>
+    </div>
+    <div class="panel grow">
+      <h3 class="tabs">CHAT
+        <span><span data-tab="GLOBAL" class="active">Global</span><span data-tab="ROOM">Room</span><span data-tab="GROUP">Group</span></span>
+      </h3>
+      <div id="chatFeed" class="feed"></div>
+      <input id="chatInput" placeholder="Message (Enter to send)">
+    </div>
+    <div class="panel grow">
+      <h3>LOG</h3>
+      <div id="logFeed" class="feed"></div>
+    </div>
+  </div>
+</div>
+
+<div class="raw">
+  <span class="logo">RAW &gt;</span>
+  <input id="rawInput" placeholder="Any RFC command, items/NPCs by ID or display name (e.g. TAKE magic potion), Enter to send">
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const pending = [];
+let ws = null, chatTab = 'GLOBAL', combatTarget = '', combatMax = 1;
+
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function addLine(feed, text, cls) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.textContent = new Date().toLocaleTimeString() + '  ' + text;
+  feed.appendChild(div);
+  feed.scrollTop = feed.scrollHeight;
+  return div;
+}
+
+const log = (text, cls = 'sys') => addLine($('logFeed'), text, cls);
+
+function chat(scope, text) {
+  const div = addLine($('chatFeed'), text, scope.toLowerCase());
+  div.dataset.scope = scope;
+  div.hidden = scope !== chatTab;
+}
+
+function setChatTab(tab) {
+  chatTab = tab;
+  document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('#chatFeed .msg').forEach(m => m.hidden = m.dataset.scope !== tab);
+}
+
+function connectToServer() {
+  const name = $('username').value.trim();
+  if (!name) return;
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { setConnected(true); send('CONNECT ' + name); };
+  ws.onmessage = e => handleLine(e.data);
+  ws.onclose = () => { setConnected(false); pending.length = 0; log('Disconnected.', 'err'); };
+}
+
+function setConnected(on) {
+  $('connBadge').textContent = on ? 'CONNECTED' : 'DISCONNECTED';
+  $('connBadge').classList.toggle('on', on);
+  $('btnConnect').hidden = on;
+  $('btnQuit').hidden = !on;
+  $('username').disabled = on;
+}
+
+function send(cmd) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return log('Not connected.', 'err');
+  const verb = cmd.split(' ')[0].toUpperCase();
+  if (verb === 'ATTACK' && cmd.includes(' ')) combatTarget = cmd.slice(7);
+  pending.push(verb);
+  ws.send(cmd);
+}
+
+function handleLine(line) {
+  if (line.startsWith('EVT ')) return handleEvent(line.split(' '));
+  if (line === 'OK hello proto=1') return log('Server greeting: proto=1');
+  const cmd = pending.shift();
+  if (line.startsWith('ERR')) return log(`${cmd}: ${line}`, 'err');
+  const body = line.slice(3);
+  const handler = handlers[cmd] || (() => log(line));
+  handler(body.startsWith('{') || body.startsWith('[') ? JSON.parse(body) : body);
+}
+
+function handleEvent(p) {
+  const [, category, type] = p;
+  if (type === 'CHAT') return chat(category, `${p[3]}: ${p.slice(4).join(' ')}`);
+  if (category === 'STATS') return $('serverCount').textContent = type.split('=')[1];
+  if (category === 'ROOM') send('LOOK');
+  if (type === 'INVITE') $('groupTarget').value = p[3];
+  log(p.slice(1).join(' '), 'evt');
+}
+
+const refresh = (...cmds) => cmds.forEach(send);
+
+const handlers = {
+  CONNECT: () => { log('Connected.'); refresh('LOOK', 'STATUS', 'INVENTORY', 'QUESTS'); },
+  LOOK: renderRoom,
+  MOVE: d => { log('Moved to ' + d.slice(5)); send('LOOK'); },
+  FLEE: d => { showCombat(false); log('Fled to ' + d.slice(5)); send('LOOK'); },
+  TAKE: d => { log('Picked up ' + d.slice(6)); refresh('LOOK', 'INVENTORY'); },
+  DROP: d => { log('Dropped ' + d.slice(8)); refresh('LOOK', 'INVENTORY'); },
+  USE: d => { d.attacker_hp === undefined ? renderVitals(d) : renderCombat(d); send('INVENTORY'); },
+  INVENTORY: inv => renderList('inv', inv.map(id => [id, ['Use', 'USE ' + id], ['Drop', 'DROP ' + id]])),
+  TALK: d => log(`${d.npc} says: "${d.dialogue}"`, 'evt'),
+  ATTACK: renderCombat,
+  DEFEND: renderCombat,
+  STATUS: renderVitals,
+  QUEST: d => {
+    log(`Quest ${d.quest_id} [${d.status}]: ${d.description} ${d.dialogue || ''}`, 'evt');
+    refresh('QUESTS', 'INVENTORY', 'STATUS');
+  },
+  QUESTS: qs => renderList('quests', qs.map(q => [`${q.quest_id} ${q.progress} ${q.status}`])),
+  WHO: d => { $('serverCount').textContent = d.server; renderPlayers(d.room); },
+  GROUP: d => log('Group OK ' + d),
+  CHAT: () => {},
+  QUIT: () => log('Bye.'),
+};
+
+function renderList(el, rows) {
+  $(el + 'Count').textContent = rows.length;
+  $(el).innerHTML = rows.map(([text, ...cmds]) =>
+    `<div class="card"><b>${esc(text)}</b><span>` +
+    cmds.map(([label, cmd]) => `<button data-cmd="${esc(cmd)}">${label}</button>`).join('') +
+    '</span></div>').join('') || '<div class="dim">None</div>';
+}
+
+function renderRoom(d) {
+  $('roomName').textContent = d.room.name;
+  $('roomId').textContent = '#' + d.room.id;
+  $('roomDesc').textContent = d.room.description;
+  $('exits').innerHTML = Object.entries(d.room.exits)
+    .map(([dir, to]) => `<button data-cmd="MOVE ${esc(dir)}">${esc(dir)} → ${esc(to)}</button>`).join('');
+  renderList('items', d.items.map(id => [id, ['Take', 'TAKE ' + id]]));
+  renderList('npcs', d.npcs.map(id => [id, ['Talk', 'TALK ' + id], ['Quest', 'QUEST ' + id], ['Attack', 'ATTACK ' + id]]));
+  renderPlayers(d.players);
+}
+
+function renderPlayers(names) {
+  $('roomCount').textContent = names.length;
+  $('roomPlayers').textContent = names.join(', ');
+}
+
+function setHP(hp, max = 100) {
+  $('hpText').textContent = `${hp} / ${max}`;
+  $('hpFill').style.width = 100 * hp / max + '%';
+}
+
+function renderVitals(d) {
+  setHP(d.hp, d.max_hp);
+  $('hpStatus').textContent = d.status.toUpperCase();
+  $('gold').textContent = d.gold;
+  $('xp').textContent = d.xp;
+}
+
+function showCombat(on) {
+  $('combat').hidden = !on;
+  $('peace').hidden = on;
+}
+
+function renderCombat(d) {
+  setHP(d.attacker_hp);
+  if (d.status === 'combat') {
+    if ($('combat').hidden) combatMax = d.target_hp + d.damage;
+    showCombat(true);
+    $('enemyName').textContent = combatTarget;
+    $('enemyHP').textContent = d.target_hp + ' HP';
+    $('enemyFill').style.width = 100 * d.target_hp / combatMax + '%';
+    return log(`You deal ${d.damage}. ${combatTarget}: ${d.target_hp} HP, you: ${d.attacker_hp} HP`, 'evt');
+  }
+  showCombat(false);
+  if (d.status === 'victory') log(`Victory! ${combatTarget} defeated.`, 'evt');
+  else log(`Defeated! Respawned in ${d.respawn}.`, 'err');
+  refresh('LOOK', 'STATUS', 'QUESTS');
+}
+
+document.addEventListener('click', e => {
+  const { cmd, arg, tab } = e.target.dataset;
+  if (tab) setChatTab(tab);
+  if (cmd) send(arg ? `${cmd} ${$(arg).value.trim()}` : cmd);
+});
+
+$('btnConnect').onclick = connectToServer;
+$('username').onkeydown = e => { if (e.key === 'Enter') connectToServer(); };
+$('chatInput').onkeydown = e => {
+  if (e.key !== 'Enter' || !e.target.value.trim()) return;
+  send(`CHAT ${chatTab} ${e.target.value.trim()}`);
+  e.target.value = '';
+};
+$('rawInput').onkeydown = e => {
+  if (e.key !== 'Enter' || !e.target.value.trim()) return;
+  send(e.target.value.trim());
+  e.target.value = '';
+};
+</script>
+</body>
+</html>

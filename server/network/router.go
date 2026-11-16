@@ -6,220 +6,137 @@ import (
 	"strings"
 	"time"
 
+	"tap/server/game"
 	"tap/server/logger"
 )
 
-const (
-	maxCmdsPerSec = 20
-	errMissingArg = "ERR 100 MISSING_ARG"
-)
-
-var GameHandler func(playerName, roomID string, fields []string) (string, string)
+const maxCmdsPerSec = 20
 
 type whoResponse struct {
 	Room   []string `json:"room"`
 	Server int      `json:"server"`
 }
 
-func Route(h *Hub, c *Client, line string) {
+func Route(h *Hub, c *Client, line string) bool {
 	if !rateAllow(c) {
 		c.Enqueue("ERR 429 RATE_LIMITED")
-		logger.Log.Warn("abuse_cmd_flood", "player", c.name, "ip", c.RemoteAddr(), "count_per_sec", c.cmdCount)
-		return
+		logger.Log.Warn("abuse_cmd_flood", "player", c.name, "ip", c.addr, "count_per_sec", c.cmdCount)
+		return true
 	}
-
 	fields := strings.Fields(line)
 	if len(fields) == 0 {
-		return
+		return true
 	}
 	cmd := strings.ToUpper(fields[0])
+	logger.Log.Info("command_received", "player", c.name, "cmd", cmd, "args", strings.Join(fields[1:], " "))
 
-	logger.Log.Debug("command_received", "player", c.name, "cmd", cmd)
-
-	if cmd == "CONNECT" {
-		handleConnect(h, c, fields)
-		return
-	}
-
-	if c.name == "" {
-		c.Enqueue("ERR 100 NOT_CONNECTED")
-		return
-	}
-
-	if cmd == "QUIT" {
+	switch {
+	case cmd == "QUIT":
 		c.Enqueue("OK bye")
-		c.Close()
-		return
-	}
-
-	if cmd == "CHAT" {
+		return false
+	case cmd == "CONNECT":
+		handleConnect(h, c, fields)
+	case c.name == "":
+		c.Enqueue("ERR 100 NOT_CONNECTED")
+	case cmd == "CHAT":
 		handleChat(h, c, fields)
-		return
-	}
-
-	if cmd == "WHO" {
-		handleWho(h, c)
-		return
-	}
-
-	if cmd == "GROUP" {
+	case cmd == "WHO":
+		data, _ := json.Marshal(whoResponse{h.game.RoomMates(c.name), h.PlayerCount()})
+		c.Enqueue("OK " + string(data))
+	case cmd == "GROUP":
 		handleGroup(h, c, fields)
-		return
-	}
-
-	if GameHandler != nil {
-		resp, newRoomID := GameHandler(c.name, c.roomID, fields)
-		if newRoomID != "" && newRoomID != c.roomID {
-			if c.roomID != "" {
-				h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
-			}
-			c.roomID = newRoomID
-			h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE ENTER %s", c.name))
-		}
+	default:
+		resp, events := h.game.HandleCommand(c.name, fields)
 		c.Enqueue(resp)
-		return
+		h.Send(events)
 	}
-
-	if cmd == "MOVE" {
-		handleMove(h, c, fields)
-		return
-	}
-
-	c.Enqueue("OK")
+	return true
 }
 
 func handleConnect(h *Hub, c *Client, fields []string) {
-	if len(fields) < 2 {
-		c.Enqueue(errMissingArg)
-		return
-	}
-	name := fields[1]
-	if h.NameTaken(name) {
+	switch {
+	case len(fields) < 2:
+		c.Enqueue(game.ErrMissingArg)
+	case c.name != "":
+		c.Enqueue("ERR 100 ALREADY_CONNECTED")
+	case !h.Register(c, fields[1]):
 		c.Enqueue("ERR 201 NAME_IN_USE")
-		return
+	default:
+		c.Enqueue("OK connected")
+		logger.Log.Info("player_connected", "player", c.name, "ip", c.addr)
+		h.Send(h.game.AddPlayer(c.name))
+		h.SendStats()
 	}
-	c.name = name
-	h.Register(c)
-	c.Enqueue("OK connected")
-	logger.Log.Info("player_connected", "player", name, "ip", c.RemoteAddr())
 }
 
 func handleChat(h *Hub, c *Client, fields []string) {
 	if len(fields) < 3 {
-		c.Enqueue(errMissingArg)
+		c.Enqueue(game.ErrMissingArg)
 		return
 	}
 	scope := strings.ToUpper(fields[1])
-	msg := strings.Join(fields[2:], " ")
-	switch scope {
-	case "GLOBAL":
-		h.Broadcast("global", "", "", fmt.Sprintf("EVT GLOBAL CHAT %s %s", c.name, msg))
+	evt := fmt.Sprintf("EVT %s CHAT %s %s", scope, c.name, strings.Join(fields[2:], " "))
+	switch {
+	case scope == "GLOBAL":
 		c.Enqueue("OK")
-	case "ROOM":
-		if c.roomID == "" {
-			c.Enqueue("ERR 100 NOT_IN_ROOM")
-			return
-		}
-		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM CHAT %s %s", c.name, msg))
+		h.SendAll(evt)
+	case scope == "ROOM":
 		c.Enqueue("OK")
-	case "GROUP":
-		if c.groupID == "" {
-			c.Enqueue("ERR 401 NOT_IN_GROUP")
-			return
-		}
-		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP CHAT %s %s", c.name, msg))
+		h.Send([]game.Event{{To: h.game.RoomMates(c.name), Msg: evt}})
+	case scope == "GROUP" && c.groupID == "":
+		c.Enqueue("ERR 401 NOT_IN_GROUP")
+	case scope == "GROUP":
 		c.Enqueue("OK")
+		h.SendGroup(c.groupID, evt)
 	default:
 		c.Enqueue("ERR 100 INVALID_SCOPE")
 	}
 }
 
-func handleWho(h *Hub, c *Client) {
-	roomList := h.RoomPlayers(c.roomID)
-	if roomList == nil {
-		roomList = []string{}
-	}
-	data, _ := json.Marshal(whoResponse{
-		Room:   roomList,
-		Server: h.PlayerCount(),
-	})
-	c.Enqueue(fmt.Sprintf("OK %s", string(data)))
-}
-
 func handleGroup(h *Hub, c *Client, fields []string) {
-	if len(fields) < 2 {
-		c.Enqueue(errMissingArg)
+	action := ""
+	if len(fields) > 1 {
+		action = strings.ToUpper(fields[1])
+	}
+	switch {
+	case (action == "INVITE" || action == "JOIN") && len(fields) < 3:
+		c.Enqueue(game.ErrMissingArg)
+		return
+	case (action == "INVITE" || action == "LEAVE") && c.groupID == "":
+		c.Enqueue("ERR 401 NOT_IN_GROUP")
+		return
+	case (action == "CREATE" || action == "JOIN") && c.groupID != "":
+		c.Enqueue("ERR 402 ALREADY_IN_GROUP")
 		return
 	}
-	action := strings.ToUpper(fields[1])
 	switch action {
 	case "CREATE":
-		if c.groupID != "" {
-			c.Enqueue("ERR 402 ALREADY_IN_GROUP")
-			return
-		}
-		c.groupID = "grp_" + c.name
-		c.Enqueue(fmt.Sprintf("OK group=%s", c.groupID))
+		h.SetGroup(c, "grp_"+c.name)
+		c.Enqueue("OK group=" + c.groupID)
 	case "INVITE":
-		if len(fields) < 3 {
-			c.Enqueue(errMissingArg)
+		if _, ok := h.GroupOf(fields[2]); !ok {
+			c.Enqueue("ERR 404 PLAYER_NOT_FOUND")
 			return
 		}
-		if c.groupID == "" {
-			c.Enqueue("ERR 401 NOT_IN_GROUP")
-			return
-		}
-		target := fields[2]
-		if !h.NameTaken(target) {
-			c.Enqueue("ERR 404 NOT_FOUND")
-			return
-		}
-		h.Broadcast("direct", "", target, fmt.Sprintf("EVT GROUP INVITE %s", c.name))
 		c.Enqueue("OK")
+		h.Send([]game.Event{{To: []string{fields[2]}, Msg: "EVT GROUP INVITE " + c.name}})
 	case "JOIN":
-		if len(fields) < 3 {
-			c.Enqueue(errMissingArg)
+		group, _ := h.GroupOf(fields[2])
+		if group == "" {
+			c.Enqueue("ERR 404 GROUP_NOT_FOUND")
 			return
 		}
-		if c.groupID != "" {
-			c.Enqueue("ERR 402 ALREADY_IN_GROUP")
-			return
-		}
-		leader := fields[2]
-		leadGrp := h.ClientGroup(leader)
-		if leadGrp == "" {
-			c.Enqueue("ERR 404 NOT_FOUND")
-			return
-		}
-		c.groupID = leadGrp
-		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP JOIN %s", c.name))
-		c.Enqueue(fmt.Sprintf("OK group=%s", c.groupID))
+		h.SetGroup(c, group)
+		c.Enqueue("OK group=" + group)
+		h.SendGroup(group, "EVT GROUP JOIN "+c.name)
 	case "LEAVE":
-		if c.groupID == "" {
-			c.Enqueue("ERR 401 NOT_IN_GROUP")
-			return
-		}
-		oldGrp := c.groupID
-		c.groupID = ""
-		h.Broadcast("group", "", oldGrp, fmt.Sprintf("EVT GROUP LEAVE %s", c.name))
+		group := c.groupID
+		h.SetGroup(c, "")
 		c.Enqueue("OK")
+		h.SendGroup(group, "EVT GROUP LEAVE "+c.name)
 	default:
 		c.Enqueue("ERR 100 UNKNOWN_ACTION")
 	}
-}
-
-func handleMove(h *Hub, c *Client, fields []string) {
-	if len(fields) < 2 {
-		c.Enqueue(errMissingArg)
-		return
-	}
-	newRoom := fields[1]
-	if c.roomID != "" && c.roomID != newRoom {
-		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
-	}
-	c.roomID = newRoom
-	h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE ENTER %s", c.name))
-	c.Enqueue(fmt.Sprintf("OK room=%s", newRoom))
 }
 
 func rateAllow(c *Client) bool {

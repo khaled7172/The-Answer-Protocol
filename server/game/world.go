@@ -1,73 +1,86 @@
 package game
 
-import(
-	"os"
+import (
 	"fmt"
+	"os"
+
 	"gopkg.in/yaml.v3"
 )
 
-func LoadWorld(path string) (*World, error){
+func LoadWorld(path string) (*World, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read world file: %w", err)
 	}
 	var worldFile WorldFile
-	err = yaml.Unmarshal(content, &worldFile)
-	if err != nil {
+	if err := yaml.Unmarshal(content, &worldFile); err != nil {
 		return nil, fmt.Errorf("failed to parse world YAML: %w", err)
 	}
 	return &worldFile.World, nil
 }
 
 func ValidateWorld(w *World) error {
-	// Starting Location
-	_, exists := w.Locations[w.StartingLoc]
-	if !exists {
-		return fmt.Errorf(
-			"starting location: %s not listed in locations",
-			w.StartingLoc)
+	if _, ok := w.Locations[w.StartingLoc]; !ok {
+		return fmt.Errorf("starting location %s not listed in locations", w.StartingLoc)
 	}
-	// Exits
-	for roomName, room := range w.Locations {
-		for direction, destination := range room.Exits {
-			_, exists = w.Locations[destination]
-			if !exists {
-				return fmt.Errorf(
-					"room %s has an invalid %s exit pointing to %s",
-					roomName, direction, destination)
-			}
+	for name, room := range w.Locations {
+		if err := validateRoom(w, name, room); err != nil {
+			return err
 		}
 	}
-	// Items
-	for roomName, room := range w.Locations {
-		for _, item := range room.Items {
-			_, exists = w.Items[item]
-			if !exists {
-				return fmt.Errorf(
-					"item %s in %s not listed in items",
-					item, roomName)
-			}
+	for name, npc := range w.NPCs {
+		if len(npc.Dialogue) == 0 {
+			return fmt.Errorf("npc %s has no dialogue", name)
 		}
 	}
-	// Spawns
-	for roomName, room := range w.Locations {
-		for _, spawn := range room.Spawns {
-			_, exists = w.NPCs[spawn.NPCType]
-			if !exists {
-				return fmt.Errorf(
-					"Spawn %s in room %s not listed in NPCs",
-					spawn.NPCType, roomName)
-			}
+	for name, quest := range w.Quests {
+		if err := validateQuest(w, name, quest); err != nil {
+			return err
 		}
 	}
-	// Quests
-	for questName, quest := range w.Quests {
-		_, exists = w.NPCs[quest.GiverNPC]
-		if !exists {
-			return fmt.Errorf(
-				"NPC %s quest giver of %s not listed in NPCs",
-				quest.GiverNPC, questName)
+	return nil
+}
+
+func validateRoom(w *World, name string, room Room) error {
+	if len(room.Exits) == 0 {
+		return fmt.Errorf("room %s has no exits", name)
+	}
+	for direction, destination := range room.Exits {
+		if _, ok := w.Locations[destination]; !ok {
+			return fmt.Errorf("room %s has an invalid %s exit pointing to %s", name, direction, destination)
 		}
+	}
+	for _, item := range room.Items {
+		if _, ok := w.Items[item]; !ok {
+			return fmt.Errorf("item %s in %s not listed in items", item, name)
+		}
+	}
+	for _, spawn := range room.Spawns {
+		if _, ok := w.NPCs[spawn.NPCType]; !ok {
+			return fmt.Errorf("spawn %s in room %s not listed in npcs", spawn.NPCType, name)
+		}
+	}
+	return nil
+}
+
+func validateQuest(w *World, name string, quest Quest) error {
+	if _, ok := w.NPCs[quest.GiverNPC]; !ok {
+		return fmt.Errorf("quest %s giver %s not listed in npcs", name, quest.GiverNPC)
+	}
+	_, isNPC := w.NPCs[quest.Objective.Item]
+	_, isItem := w.Items[quest.Objective.Item]
+	switch {
+	case quest.Objective.Type == "defeat_npc" && !isNPC:
+		return fmt.Errorf("quest %s targets unknown npc %s", name, quest.Objective.Item)
+	case quest.Objective.Type == "find_item" && !isItem:
+		return fmt.Errorf("quest %s targets unknown item %s", name, quest.Objective.Item)
+	case quest.Objective.Type != "defeat_npc" && quest.Objective.Type != "find_item":
+		return fmt.Errorf("quest %s has unknown objective type %s", name, quest.Objective.Type)
+	case quest.Objective.Quantity < 1:
+		return fmt.Errorf("quest %s needs a quantity of at least 1", name)
+	}
+	if _, ok := w.Items[quest.Reward.Item]; quest.Reward.Item != "" && !ok {
+		return fmt.Errorf("quest %s rewards unknown item %s", name, quest.Reward.Item)
 	}
 	return nil
 }

@@ -12,9 +12,9 @@ import (
 
 type Client struct {
 	conn      net.Conn
+	addr      string
 	send      chan string
 	name      string
-	roomID    string
 	groupID   string
 	cmdCount  int
 	cmdWindow time.Time
@@ -23,48 +23,34 @@ type Client struct {
 func NewClient(conn net.Conn) *Client {
 	return &Client{
 		conn:      conn,
+		addr:      conn.RemoteAddr().String(),
 		send:      make(chan string, 128),
 		cmdWindow: time.Now(),
 	}
 }
 
 func (c *Client) WriteLoop() {
-	defer c.Close()
 	for msg := range c.send {
 		fmt.Fprintf(c.conn, "%s\n", msg)
 	}
+	c.conn.Close()
 }
 
 func (c *Client) ReadLoop(h *Hub) {
-	defer func() {
-		h.Unregister(c)
-		c.Close()
-		close(c.send)
-	}()
-
 	scanner := bufio.NewScanner(c.conn)
-	for scanner.Scan() {
-		Route(h, c, scanner.Text())
+	for scanner.Scan() && Route(h, c, scanner.Text()) {
 	}
-}
-
-func (c *Client) Close() {
-	if c.conn != nil {
-		c.conn.Close()
+	if c.name != "" {
+		h.Unregister(c)
 	}
-}
-
-func (c *Client) RemoteAddr() string {
-	if c.conn != nil {
-		return c.conn.RemoteAddr().String()
-	}
-	return ""
+	logger.Log.Info("player_disconnected", "player", c.name, "ip", c.addr)
+	close(c.send)
 }
 
 func (c *Client) Enqueue(msg string) bool {
 	logger.Log.Debug("response_sent", "player", c.name, "response", msg)
 	if strings.HasPrefix(msg, "ERR ") {
-		logger.Log.Warn("error_sent", "player", c.name, "code", msg)
+		logger.Log.Warn("error_sent", "player", c.name, "error", msg)
 	}
 	select {
 	case c.send <- msg:

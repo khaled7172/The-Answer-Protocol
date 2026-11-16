@@ -3,76 +3,59 @@ package main
 import (
 	"fmt"
 	"sync"
+
+	"tap/server/game"
 	"tap/server/logger"
 )
 
-type broadcastMsg struct {
-	scope   string
-	roomID  string
-	target  string
-	payload string
-}
-
 type Hub struct {
-	mu        sync.RWMutex
-	clients   map[string]*Client
-	broadcast chan broadcastMsg
+	mu      sync.RWMutex
+	game    *game.Game
+	clients map[string]*Client
 }
 
-func NewHub() *Hub {
-	return &Hub{
-		clients:   make(map[string]*Client),
-		broadcast: make(chan broadcastMsg, 256),
-	}
+func NewHub(g *game.Game) *Hub {
+	return &Hub{game: g, clients: make(map[string]*Client)}
 }
 
-func (h *Hub) Run() {
-	for msg := range h.broadcast {
-		h.dispatch(msg)
-	}
-}
-
-func (h *Hub) Register(c *Client) {
+func (h *Hub) Register(c *Client, name string) bool {
 	h.mu.Lock()
-	h.clients[c.name] = c
-	h.mu.Unlock()
-	logger.Log.Info("player_registered", "player", c.name)
+	defer h.mu.Unlock()
+	if _, taken := h.clients[name]; taken {
+		return false
+	}
+	c.name = name
+	h.clients[name] = c
+	return true
 }
 
 func (h *Hub) Unregister(c *Client) {
 	h.mu.Lock()
-	_, ok := h.clients[c.name]
-	if ok {
-		delete(h.clients, c.name)
-	}
+	delete(h.clients, c.name)
+	group := c.groupID
 	h.mu.Unlock()
 
+	h.Send(h.game.RemovePlayer(c.name))
+	if group != "" {
+		h.SendGroup(group, "EVT GROUP LEAVE "+c.name)
+	}
+	h.SendStats()
+}
+
+func (h *Hub) SetGroup(c *Client, group string) {
+	h.mu.Lock()
+	c.groupID = group
+	h.mu.Unlock()
+}
+
+func (h *Hub) GroupOf(name string) (string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	c, ok := h.clients[name]
 	if !ok {
-		return
+		return "", false
 	}
-	logger.Log.Info("player_disconnected", "player", c.name)
-	if c.roomID != "" {
-		h.Broadcast("room", c.roomID, "", fmt.Sprintf("EVT ROOM PRESENCE LEAVE %s", c.name))
-	}
-	if c.groupID != "" {
-		h.Broadcast("group", "", c.groupID, fmt.Sprintf("EVT GROUP LEAVE %s", c.name))
-	}
-}
-
-func (h *Hub) ClientGroup(name string) string {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if c, ok := h.clients[name]; ok {
-		return c.groupID
-	}
-	return ""
-}
-
-func (h *Hub) NameTaken(name string) bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	_, exists := h.clients[name]
-	return exists
+	return c.groupID, true
 }
 
 func (h *Hub) PlayerCount() int {
@@ -81,48 +64,39 @@ func (h *Hub) PlayerCount() int {
 	return len(h.clients)
 }
 
-func (h *Hub) RoomPlayers(roomID string) []string {
+func (h *Hub) Send(events []game.Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	var out []string
+	for _, e := range events {
+		logger.Log.Info("event_broadcast", "to", e.To, "payload", e.Msg)
+		for _, name := range e.To {
+			if c, ok := h.clients[name]; ok {
+				c.Enqueue(e.Msg)
+			}
+		}
+	}
+}
+
+func (h *Hub) SendAll(msg string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	logger.Log.Info("event_broadcast", "to", "all", "payload", msg)
 	for _, c := range h.clients {
-		if c.roomID == roomID {
-			out = append(out, c.name)
-		}
+		c.Enqueue(msg)
 	}
-	return out
 }
 
-func (h *Hub) Broadcast(scope, roomID, target, payload string) {
-	h.broadcast <- broadcastMsg{scope, roomID, target, payload}
-}
-
-func (h *Hub) dispatch(msg broadcastMsg) {
-	logger.Log.Info("event_broadcast", "scope", msg.scope, "payload", msg.payload)
-
+func (h *Hub) SendGroup(group, msg string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-
-	switch msg.scope {
-	case "global":
-		for _, c := range h.clients {
-			c.Enqueue(msg.payload)
-		}
-	case "room":
-		for _, c := range h.clients {
-			if c.roomID == msg.roomID {
-				c.Enqueue(msg.payload)
-			}
-		}
-	case "direct":
-		if c, ok := h.clients[msg.target]; ok {
-			c.Enqueue(msg.payload)
-		}
-	case "group":
-		for _, c := range h.clients {
-			if c.groupID != "" && c.groupID == msg.target {
-				c.Enqueue(msg.payload)
-			}
+	logger.Log.Info("event_broadcast", "to", group, "payload", msg)
+	for _, c := range h.clients {
+		if c.groupID == group {
+			c.Enqueue(msg)
 		}
 	}
+}
+
+func (h *Hub) SendStats() {
+	h.SendAll(fmt.Sprintf("EVT STATS players=%d", h.PlayerCount()))
 }

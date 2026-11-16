@@ -5,11 +5,11 @@ type WorldFile struct {
 }
 
 type World struct {
-	StartingLoc	string			 `yaml:"starting_location"`
-	Locations 	map[string]Room  `yaml:"locations"`
-	Items		map[string]Item  `yaml:"items"`
-	NPCs      	map[string]NPC   `yaml:"npcs"`
-	Quests    	map[string]Quest `yaml:"quests"`
+	StartingLoc string           `yaml:"starting_location"`
+	Locations   map[string]Room  `yaml:"locations"`
+	Items       map[string]Item  `yaml:"items"`
+	NPCs        map[string]NPC   `yaml:"npcs"`
+	Quests      map[string]Quest `yaml:"quests"`
 }
 
 type Room struct {
@@ -34,7 +34,7 @@ type Item struct {
 
 type Effect struct {
 	Type   string `yaml:"type"`
-	Amount int   `yaml:"amount"`
+	Amount int    `yaml:"amount"`
 }
 
 type NPC struct {
@@ -69,4 +69,20 @@ type QuestReward struct {
 	Gold int    `yaml:"gold"`
 	Item string `yaml:"item"`
 	XP   int    `yaml:"xp"`
+}
+
+type PlayerState struct {
+	RoomID     string
+	HP         int
+	CombatWith string
+	TargetHP   int
+	Inventory  []string
+	Gold       int
+	XP         int
+	Quests     map[string]*QuestState
+}
+
+type QuestState struct {
+	Kills int
+	Done  bool
 }
