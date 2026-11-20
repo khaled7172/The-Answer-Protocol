@@ -1,10 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"tap/server/game"
 	"tap/server/logger"
@@ -12,15 +13,15 @@ import (
 
 const maxCmdsPerSec = 20
 
-type whoResponse struct {
-	Room   []string `json:"room"`
-	Server int      `json:"server"`
-}
-
 func Route(h *Hub, c *Client, line string) bool {
 	if !rateAllow(c) {
 		c.Enqueue("ERR 429 RATE_LIMITED")
 		logger.Log.Warn("abuse_cmd_flood", "player", c.name, "ip", c.addr, "count_per_sec", c.cmdCount)
+		return true
+	}
+	if !utf8.ValidString(line) || strings.ContainsFunc(line, unicode.IsControl) {
+		c.Enqueue("ERR 100 INVALID_CHARACTERS")
+		logger.Log.Warn("invalid_input", "player", c.name, "ip", c.addr, "line", line)
 		return true
 	}
 	fields := strings.Fields(line)
@@ -41,8 +42,7 @@ func Route(h *Hub, c *Client, line string) bool {
 	case cmd == "CHAT":
 		handleChat(h, c, fields)
 	case cmd == "WHO":
-		data, _ := json.Marshal(whoResponse{h.game.RoomMates(c.name), h.PlayerCount()})
-		c.Enqueue("OK " + string(data))
+		c.Enqueue(fmt.Sprintf("OK players=%d", h.PlayerCount()))
 	case cmd == "GROUP":
 		handleGroup(h, c, fields)
 	default:
@@ -111,8 +111,7 @@ func handleGroup(h *Hub, c *Client, fields []string) {
 	}
 	switch action {
 	case "CREATE":
-		h.SetGroup(c, "grp_"+c.name)
-		c.Enqueue("OK group=" + c.groupID)
+		c.Enqueue("OK group=" + h.NewGroup(c))
 	case "INVITE":
 		if _, ok := h.GroupOf(fields[2]); !ok {
 			c.Enqueue("ERR 404 PLAYER_NOT_FOUND")

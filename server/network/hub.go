@@ -9,9 +9,10 @@ import (
 )
 
 type Hub struct {
-	mu      sync.RWMutex
-	game    *game.Game
-	clients map[string]*Client
+	mu       sync.RWMutex
+	game     *game.Game
+	clients  map[string]*Client
+	groupSeq int
 }
 
 func NewHub(g *game.Game) *Hub {
@@ -40,6 +41,14 @@ func (h *Hub) Unregister(c *Client) {
 		h.SendGroup(group, "EVT GROUP LEAVE "+c.name)
 	}
 	h.SendStats()
+}
+
+func (h *Hub) NewGroup(c *Client) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.groupSeq++
+	c.groupID = fmt.Sprintf("grp_%s_%d", c.name, h.groupSeq)
+	return c.groupID
 }
 
 func (h *Hub) SetGroup(c *Client, group string) {

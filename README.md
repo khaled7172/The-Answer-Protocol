@@ -19,10 +19,10 @@ The world itself lives in `world_data/world.yaml`.
 You need Go 1.27.1 or newer and `make`. The server and both clients are started from the repository root.
 
 ```bash
-make install         # download dependencies (yaml.v3)
-make run-server      # start the server on :8080
-make run-client      # terminal client, in another terminal
-make run-client-gui  # web client, opens http://localhost:3000
+make install
+make run-server
+make run-client
+make run-client-gui
 ```
 
 You can also just use `nc localhost 8080` and type protocol commands by hand.
@@ -37,8 +37,8 @@ You can also just use `nc localhost 8080` and type protocol commands by hand.
 
 **How we used AI.** We used an AI assistant to:
 
-- find concurrency bugs (data races, a crash on double `CONNECT`, the disconnect order);
-- write unit tests;
+- find concurrency bugs (data races, a crash on double `CONNECT`, the disconnect order)
+- help with writing some unit tests
 
 ## Architecture
 
@@ -56,7 +56,7 @@ accept loop ── new client ──► ReadLoop ──line──► Route() ─
 
 - `server.go` loads and validates the world at startup and refuses to run if the YAML is broken. Then it accepts connections, sends the `OK hello proto=1` greeting and starts the two goroutines.
 - `client.go`: `ReadLoop` reads one line at a time and hands it to the router. `WriteLoop` writes queued messages to the socket. Sending is non-blocking: if a client stops reading and its queue fills up, its messages get dropped instead of freezing everyone else.
-- `router.go` handles rate limiting, the "must `CONNECT` first" check and the player-level commands (`CONNECT`, `QUIT`, `CHAT`, `WHO`, `GROUP`). Everything else goes to the game.
+- `router.go` handles rate limiting, rejecting control characters and bad UTF-8, the "must `CONNECT` first" check and the player-level commands (`CONNECT`, `QUIT`, `CHAT`, `WHO`, `GROUP`). Everything else goes to the game.
 - `hub.go` is the list of connected players and their groups, behind one `RWMutex`. It delivers events.
 - `game/game.go` owns the world state (rooms, items, NPCs, HP, quests) behind its own mutex. It never calls the network code. It just returns the reply and the events to send, along with who should get them, so there is no lock cycle between the two.
 
@@ -70,8 +70,8 @@ Where we differ from the RFC:
 
 | What | RFC | Us | Why |
 |---|---|---|---|
-| `WHO` reply | `OK players=<n>` | `OK {"room":[...],"server":n}` | This is the format in the subject's example, and the GUI needs both numbers. |
-| `TALK` reply | `OK <text>` | `OK {"npc":"...","dialogue":"..."}` | Same, it's the subject's example. |
+| `TALK` reply | `OK <text>` | `OK {"npc":"...","dialogue":"..."}` | This is the format in the subject's example. |
+| `QUEST` reply | example shows `"status":"available"` | `"active"`, then `"completed"` | Asking an NPC for a quest accepts it right away, so it is already active. |
 | Presence events | sent to the room | not sent to the player who moved | They already get `OK room=<id>`. |
 | Extra commands | | `DEFEND`, `FLEE`, `USE <item>` | Combat commands, which the RFC leaves to us. |
 | Extra event | | `EVT ROOM COMBAT <player> <npc> <combat\|victory\|defeated>` | The subject wants combat results broadcast, and the RFC has no event for it. |
@@ -84,6 +84,7 @@ Extra error replies, for cases the RFC doesn't cover:
 | `ERR 100 ALREADY_CONNECTED` | `CONNECT` a second time on the same connection |
 | `ERR 100 MISSING_ARG` | a required argument is missing |
 | `ERR 100 UNKNOWN_COMMAND` | unknown command |
+| `ERR 100 INVALID_CHARACTERS` | the line has control characters or is not valid UTF-8 (RFC 9.2) |
 | `ERR 100 INVALID_SCOPE`, `ERR 100 UNKNOWN_ACTION` | bad `CHAT` scope or `GROUP` action |
 | `ERR 400 IN_COMBAT` | `MOVE` while fighting (use `FLEE`) |
 | `ERR 400 NOT_IN_COMBAT` | `DEFEND` or `FLEE` outside a fight |
@@ -194,6 +195,7 @@ The server logs JSON to stdout with Go's `log/slog`, one line per event. Every l
 | `quest_accepted`, `quest_progress`, `quest_completed` | INFO | `player`, `quest`, progress or rewards |
 | `abuse_cmd_flood` | WARN | `player`, `ip`, `count_per_sec` (more than 20 commands in a second) |
 | `abuse_rapid_reconnect` | WARN | `ip`, `attempts` (more than 5 connections in 10 seconds from one IP) |
+| `invalid_input` | WARN | `player`, `ip`, `line` (control characters or bad UTF-8) |
 
 To watch for problems, filter the output:
 
@@ -245,10 +247,10 @@ A: CONNECT alice
 B: CONNECT bob             A sees: EVT ROOM PRESENCE ENTER bob, EVT STATS players=2
 A: CHAT ROOM hello         B sees: EVT ROOM CHAT alice hello
 A: MOVE east               B sees: EVT ROOM PRESENCE LEAVE alice
-A: WHO                     OK {"room":["alice"],"server":2}
-A: GROUP CREATE
+A: WHO                     OK players=2
+A: GROUP CREATE            OK group=grp_alice_1
 A: GROUP INVITE bob        B sees: EVT GROUP INVITE alice
-B: GROUP JOIN alice        A sees: EVT GROUP JOIN bob
+B: GROUP JOIN alice        OK group=grp_alice_1, A sees: EVT GROUP JOIN bob
 B: CHAT GROUP hi           A sees: EVT GROUP CHAT bob hi
 ```
 

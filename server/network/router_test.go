@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -112,14 +110,38 @@ func TestRouteWho(t *testing.T) {
 	drain(alice)
 
 	Route(h, alice, "WHO")
-	resp := drain(alice)[0]
-	var who whoResponse
-	if err := json.Unmarshal([]byte(strings.TrimPrefix(resp, "OK ")), &who); err != nil {
-		t.Fatalf("bad WHO json %q: %v", resp, err)
-	}
-	if who.Server != 3 || !slices.Equal(who.Room, []string{"alice", "bob"}) {
-		t.Fatalf("unexpected WHO %+v", who)
-	}
+	expect(t, alice, "OK players=3")
+}
+
+func TestRouteRejectsControlCharacters(t *testing.T) {
+	h := newTestHub()
+	alice := connect(t, h, "alice")
+	bob := connect(t, h, "bob")
+	drain(alice)
+
+	Route(h, alice, "CHAT GLOBAL hi\x1b[31mred")
+	Route(h, alice, "CHAT GLOBAL \xff\xfe")
+	expect(t, alice, "ERR 100 INVALID_CHARACTERS", "ERR 100 INVALID_CHARACTERS")
+	expect(t, bob)
+
+	Route(h, alice, "CHAT GLOBAL héllo 🌲")
+	expect(t, bob, "EVT GLOBAL CHAT alice héllo 🌲")
+}
+
+func TestRouteRecreatedGroupIsNew(t *testing.T) {
+	h := newTestHub()
+	alice := connect(t, h, "alice")
+	bob := connect(t, h, "bob")
+	Route(h, alice, "GROUP CREATE")
+	Route(h, bob, "GROUP JOIN alice")
+	Route(h, alice, "GROUP LEAVE")
+	Route(h, alice, "GROUP CREATE")
+	drain(alice)
+	drain(bob)
+
+	Route(h, bob, "CHAT GROUP still there?")
+	expect(t, bob, "OK", "EVT GROUP CHAT bob still there?")
+	expect(t, alice)
 }
 
 func TestRouteGroupLifecycle(t *testing.T) {
@@ -138,11 +160,11 @@ func TestRouteGroupLifecycle(t *testing.T) {
 	Route(h, alice, "GROUP CREATE")
 	Route(h, alice, "GROUP INVITE ghost")
 	Route(h, alice, "GROUP INVITE bob")
-	expect(t, alice, "OK group=grp_alice", "ERR 402 ALREADY_IN_GROUP", "ERR 404 PLAYER_NOT_FOUND", "OK")
+	expect(t, alice, "OK group=grp_alice_1", "ERR 402 ALREADY_IN_GROUP", "ERR 404 PLAYER_NOT_FOUND", "OK")
 	expect(t, bob, "EVT GROUP INVITE alice")
 
 	Route(h, bob, "GROUP JOIN alice")
-	expect(t, bob, "OK group=grp_alice", "EVT GROUP JOIN bob")
+	expect(t, bob, "OK group=grp_alice_1", "EVT GROUP JOIN bob")
 	expect(t, alice, "EVT GROUP JOIN bob")
 
 	Route(h, bob, "CHAT GROUP regroup")

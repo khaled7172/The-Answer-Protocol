@@ -232,7 +232,7 @@ const handlers = {
     refresh('QUESTS', 'INVENTORY', 'STATUS');
   },
   QUESTS: qs => renderList('quests', qs.map(q => [`${q.quest_id} ${q.progress} ${q.status}`])),
-  WHO: d => { $('serverCount').textContent = d.server; renderPlayers(d.room); },
+  WHO: d => { $('serverCount').textContent = d.split('=')[1]; send('LOOK'); },
   GROUP: d => log('Group OK ' + d),
   CHAT: () => {},
   QUIT: () => log('Bye.'),
